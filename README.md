@@ -138,16 +138,16 @@ const tests = TestLoader.loadFromDirectory('./tests');
 
 ## Element Identification
 
-Elements are identified using `data-testid` attribute in React/ReactJsonUI:
+Elements are identified using the `id` attribute (HTML id):
 
 ```tsx
 // React component
-<button data-testid="login_button">Login</button>
+<button id="login_button">Login</button>
 
-// ReactJsonUI (automatically generated from testId property)
+// ReactJsonUI (id property becomes HTML id attribute)
 {
   "type": "Button",
-  "testId": "login_button",
+  "id": "login_button",
   "text": "Login"
 }
 ```

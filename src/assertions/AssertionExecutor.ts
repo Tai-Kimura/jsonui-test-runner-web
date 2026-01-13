@@ -2,7 +2,7 @@
  * JsonUI Test Runner - Web Driver
  * Assertion executor using Playwright
  *
- * Uses data-testid for element matching (ReactJsonUI exposes testId as data-testid)
+ * Uses id attribute for element matching (ReactJsonUI exposes id as HTML id attribute)
  */
 
 import { Page, Locator } from 'playwright';
@@ -193,14 +193,14 @@ export class AssertionExecutor {
   // Helper functions
 
   /**
-   * Get locator for element by data-testid
+   * Get locator for element by id attribute
    */
   private getLocator(id: string): Locator {
-    return this.page.locator(`[data-testid="${id}"]`);
+    return this.page.locator(`#${id}`);
   }
 
   /**
-   * Wait for element to appear by data-testid
+   * Wait for element to appear by id attribute
    */
   private async waitForElement(id: string, timeout: number): Promise<Locator> {
     const element = this.getLocator(id);
@@ -209,7 +209,7 @@ export class AssertionExecutor {
       await element.first().waitFor({ state: 'visible', timeout });
       return element.first();
     } catch (error) {
-      throw new Error(`Element '${id}' not found by data-testid within ${timeout}ms`);
+      throw new Error(`Element '${id}' not found by id within ${timeout}ms`);
     }
   }
 }
