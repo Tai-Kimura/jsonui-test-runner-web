@@ -76,7 +76,13 @@ export class ActionExecutor {
       throw new Error("tap requires 'id'");
     }
     const element = await this.waitForElement(id, timeout);
-    await element.click();
+
+    // If text is specified, tap on the specific text portion within the element
+    if (step.text) {
+      await this.tapTextPortion(element, step.text);
+    } else {
+      await element.click();
+    }
   }
 
   private async executeDoubleTap(step: TestStep, timeout: number): Promise<void> {
@@ -305,5 +311,47 @@ export class ActionExecutor {
     } catch (error) {
       throw new Error(`Element '${id}' not found by id within ${timeout}ms`);
     }
+  }
+
+  /**
+   * Tap on a specific text portion within an element
+   * Calculates the approximate position of the target text and clicks there
+   */
+  private async tapTextPortion(element: Locator, targetText: string): Promise<void> {
+    const fullText = await element.textContent();
+    if (!fullText) {
+      throw new Error('Element has no text content');
+    }
+
+    const startIndex = fullText.indexOf(targetText);
+    if (startIndex === -1) {
+      throw new Error(`Text '${targetText}' not found in element text '${fullText}'`);
+    }
+
+    const endIndex = startIndex + targetText.length;
+    const totalLength = fullText.length;
+
+    if (totalLength === 0) {
+      await element.click();
+      return;
+    }
+
+    // Calculate the center position of the target text (as a ratio of the element width)
+    const startRatio = startIndex / totalLength;
+    const endRatio = endIndex / totalLength;
+    const centerRatio = (startRatio + endRatio) / 2;
+
+    // Get the bounding box of the element
+    const box = await element.boundingBox();
+    if (!box) {
+      throw new Error('Element has no bounding box');
+    }
+
+    // Calculate the tap coordinate
+    const tapX = box.x + (box.width * centerRatio);
+    const tapY = box.y + (box.height / 2);
+
+    // Click at the calculated position
+    await this.page.mouse.click(tapX, tapY);
   }
 }

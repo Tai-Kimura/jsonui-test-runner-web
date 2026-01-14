@@ -73,6 +73,7 @@ export interface FlowTestStep {
   assert?: string;
   id?: string;
   ids?: string[];
+  text?: string;
   value?: string;
   direction?: 'up' | 'down' | 'left' | 'right';
   duration?: number;
@@ -98,6 +99,7 @@ export interface TestStep {
   assert?: AssertionType;
   id?: string;
   ids?: string[];
+  text?: string;
   value?: string;
   direction?: 'up' | 'down' | 'left' | 'right';
   duration?: number;
