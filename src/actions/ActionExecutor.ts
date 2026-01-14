@@ -65,6 +65,9 @@ export class ActionExecutor {
       case 'screenshot':
         await this.executeScreenshot(step);
         break;
+      case 'alertTap':
+        await this.executeAlertTap(step, timeout);
+        break;
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -288,6 +291,77 @@ export class ActionExecutor {
   private async executeScreenshot(step: TestStep): Promise<void> {
     const name = step.name ?? `screenshot_${Date.now()}`;
     await this.page.screenshot({ path: `${name}.png` });
+  }
+
+  private async executeAlertTap(step: TestStep, timeout: number): Promise<void> {
+    const buttonText = step.button;
+    if (!buttonText) {
+      throw new Error("alertTap requires 'button'");
+    }
+
+    // Set up dialog handler before triggering
+    // For web, native alerts (alert, confirm, prompt) are handled via page.on('dialog')
+    // This implementation assumes the alert is already showing or will appear
+
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.page.removeListener('dialog', dialogHandler);
+        reject(new Error(`Alert did not appear within ${timeout}ms`));
+      }, timeout);
+
+      const dialogHandler = async (dialog: import('playwright').Dialog) => {
+        clearTimeout(timeoutId);
+
+        const dialogType = dialog.type();
+
+        // For confirm dialogs, match button text to accept/dismiss
+        if (dialogType === 'confirm') {
+          // Common button text mappings
+          const acceptTexts = ['OK', 'Yes', 'Confirm', 'Accept', 'はい', '確認', 'OK'];
+          const dismissTexts = ['Cancel', 'No', 'Dismiss', 'いいえ', 'キャンセル'];
+
+          if (acceptTexts.some(t => t.toLowerCase() === buttonText.toLowerCase())) {
+            await dialog.accept();
+            resolve();
+            return;
+          }
+          if (dismissTexts.some(t => t.toLowerCase() === buttonText.toLowerCase())) {
+            await dialog.dismiss();
+            resolve();
+            return;
+          }
+          // If button text doesn't match known patterns, try accept
+          await dialog.accept();
+          resolve();
+          return;
+        }
+
+        // For alert dialogs, just dismiss (they only have OK)
+        if (dialogType === 'alert') {
+          await dialog.accept();
+          resolve();
+          return;
+        }
+
+        // For prompt dialogs
+        if (dialogType === 'prompt') {
+          const acceptTexts = ['OK', 'Submit', 'Yes', 'はい', '確認'];
+          if (acceptTexts.some(t => t.toLowerCase() === buttonText.toLowerCase())) {
+            await dialog.accept();
+          } else {
+            await dialog.dismiss();
+          }
+          resolve();
+          return;
+        }
+
+        // Default: accept
+        await dialog.accept();
+        resolve();
+      };
+
+      this.page.once('dialog', dialogHandler);
+    });
   }
 
   // Helper functions
