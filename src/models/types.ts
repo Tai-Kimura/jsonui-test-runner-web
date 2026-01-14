@@ -85,6 +85,8 @@ export interface FlowTestStep {
   path?: string;
   amount?: number;
   button?: string;
+  label?: string;
+  index?: number;
 }
 
 export interface Checkpoint {
@@ -112,6 +114,8 @@ export interface TestStep {
   path?: string;
   amount?: number;
   button?: string;
+  label?: string;
+  index?: number;
 }
 
 // MARK: - Action & Assertion Types
@@ -129,7 +133,8 @@ export type ActionType =
   | 'wait'
   | 'back'
   | 'screenshot'
-  | 'alertTap';
+  | 'alertTap'
+  | 'selectOption';
 
 export type AssertionType =
   | 'visible'

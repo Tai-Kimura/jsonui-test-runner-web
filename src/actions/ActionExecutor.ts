@@ -68,6 +68,9 @@ export class ActionExecutor {
       case 'alertTap':
         await this.executeAlertTap(step, timeout);
         break;
+      case 'selectOption':
+        await this.executeSelectOption(step, timeout);
+        break;
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -362,6 +365,32 @@ export class ActionExecutor {
 
       this.page.once('dialog', dialogHandler);
     });
+  }
+
+  private async executeSelectOption(step: TestStep, timeout: number): Promise<void> {
+    const id = step.id;
+    if (!id) {
+      throw new Error("selectOption requires 'id'");
+    }
+
+    const element = await this.waitForElement(id, timeout);
+
+    // Try to find a select element within the container
+    const select = element.locator('select').first();
+    const hasSelect = await select.count() > 0;
+
+    const targetSelect = hasSelect ? select : element;
+
+    // Select by value, label, or index
+    if (step.value !== undefined) {
+      await targetSelect.selectOption({ value: step.value });
+    } else if (step.label !== undefined) {
+      await targetSelect.selectOption({ label: step.label });
+    } else if (step.index !== undefined) {
+      await targetSelect.selectOption({ index: step.index });
+    } else {
+      throw new Error("selectOption requires 'value', 'label', or 'index'");
+    }
   }
 
   // Helper functions
