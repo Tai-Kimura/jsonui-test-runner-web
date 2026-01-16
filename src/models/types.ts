@@ -134,7 +134,9 @@ export type ActionType =
   | 'back'
   | 'screenshot'
   | 'alertTap'
-  | 'selectOption';
+  | 'selectOption'
+  | 'tapItem'
+  | 'selectTab';
 
 export type AssertionType =
   | 'visible'

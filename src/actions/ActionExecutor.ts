@@ -71,6 +71,12 @@ export class ActionExecutor {
       case 'selectOption':
         await this.executeSelectOption(step, timeout);
         break;
+      case 'tapItem':
+        await this.executeTapItem(step, timeout);
+        break;
+      case 'selectTab':
+        await this.executeSelectTab(step, timeout);
+        break;
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -391,6 +397,38 @@ export class ActionExecutor {
     } else {
       throw new Error("selectOption requires 'value', 'label', or 'index'");
     }
+  }
+
+  private async executeTapItem(step: TestStep, timeout: number): Promise<void> {
+    const id = step.id;
+    if (!id) {
+      throw new Error("tapItem requires 'id'");
+    }
+    const index = step.index;
+    if (index === undefined) {
+      throw new Error("tapItem requires 'index'");
+    }
+
+    // Find the item using the generated id pattern: {collectionId}_item_{index}
+    const itemId = `${id}_item_${index}`;
+    const element = await this.waitForElement(itemId, timeout);
+    await element.click();
+  }
+
+  private async executeSelectTab(step: TestStep, timeout: number): Promise<void> {
+    const id = step.id;
+    if (!id) {
+      throw new Error("selectTab requires 'id'");
+    }
+    const index = step.index;
+    if (index === undefined) {
+      throw new Error("selectTab requires 'index'");
+    }
+
+    // Find the tab using the generated id pattern: {tabViewId}_tab_{index}
+    const tabId = `${id}_tab_${index}`;
+    const element = await this.waitForElement(tabId, timeout);
+    await element.click();
   }
 
   // Helper functions
