@@ -46,7 +46,7 @@ export interface TestCase {
 
 export interface FlowTest {
   type: 'flow';
-  sources: FlowTestSource[];
+  sources?: FlowTestSource[];  // Now optional (not needed when using file references)
   metadata: TestMetadata;
   platform?: PlatformTarget;
   initialState?: FlowInitialState;
@@ -68,7 +68,8 @@ export interface FlowInitialState {
 }
 
 export interface FlowTestStep {
-  screen: string;
+  // For inline steps
+  screen?: string;
   action?: string;
   assert?: string;
   id?: string;
@@ -87,6 +88,10 @@ export interface FlowTestStep {
   button?: string;
   label?: string;
   index?: number;
+  // For file reference steps
+  file?: string;
+  case?: string;
+  cases?: string[];
 }
 
 export interface Checkpoint {
@@ -200,4 +205,12 @@ export function isAction(step: TestStep): boolean {
 
 export function isAssertion(step: TestStep): boolean {
   return step.assert !== undefined;
+}
+
+export function isFileReference(step: FlowTestStep): boolean {
+  return step.file !== undefined;
+}
+
+export function isInlineStep(step: FlowTestStep): boolean {
+  return step.screen !== undefined && (step.action !== undefined || step.assert !== undefined);
 }

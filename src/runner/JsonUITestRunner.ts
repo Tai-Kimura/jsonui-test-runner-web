@@ -17,8 +17,10 @@ import {
   TestSuiteResult,
   platformIncludes,
   isAction,
-  isAssertion
+  isAssertion,
+  isFileReference
 } from '../models/types';
+import { TestLoader } from './TestLoader';
 
 /**
  * Configuration for the test runner
@@ -248,7 +250,11 @@ export class JsonUITestRunner {
   private async executeFlowSteps(steps: FlowTestStep[]): Promise<void> {
     for (let index = 0; index < steps.length; index++) {
       const step = steps[index];
-      this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
+      if (isFileReference(step)) {
+        this.log(`  Flow step ${index + 1}: file=${step.file}`);
+      } else {
+        this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
+      }
       await this.executeFlowStep(step);
     }
   }
@@ -264,7 +270,13 @@ export class JsonUITestRunner {
   }
 
   private async executeFlowStep(step: FlowTestStep): Promise<void> {
-    // Convert FlowTestStep to TestStep and execute
+    // Handle file reference steps
+    if (isFileReference(step)) {
+      await this.executeFileReferenceStep(step);
+      return;
+    }
+
+    // Handle inline steps - convert FlowTestStep to TestStep and execute
     const testStep: TestStep = {
       action: step.action as TestStep['action'],
       assert: step.assert as TestStep['assert'],
@@ -282,6 +294,31 @@ export class JsonUITestRunner {
       amount: step.amount
     };
     await this.executeStep(testStep);
+  }
+
+  private async executeFileReferenceStep(step: FlowTestStep): Promise<void> {
+    const testCases = TestLoader.resolveFileReferenceCases(step);
+
+    for (const testCase of testCases) {
+      // Skip if marked to skip
+      if (testCase.skip) {
+        this.log(`    Skipping case: ${testCase.name}`);
+        continue;
+      }
+
+      // Check platform compatibility
+      if (!platformIncludes(testCase.platform, this.config.platform)) {
+        this.log(`    Skipping case ${testCase.name} - platform mismatch`);
+        continue;
+      }
+
+      this.log(`    Running referenced case: ${testCase.name}`);
+
+      // Execute each step in the test case
+      for (const testStep of testCase.steps) {
+        await this.executeStep(testStep);
+      }
+    }
   }
 
   private stepDescription(step: TestStep): string {

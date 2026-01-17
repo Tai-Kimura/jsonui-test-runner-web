@@ -5,14 +5,43 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScreenTest, FlowTest, LoadedTest } from '../models/types';
+import { ScreenTest, FlowTest, FlowTestStep, TestCase, LoadedTest } from '../models/types';
+
+/**
+ * Custom error for test loading failures
+ */
+export class CaseNotFoundError extends Error {
+  constructor(caseName: string, file: string) {
+    super(`Test case '${caseName}' not found in file: ${file}`);
+    this.name = 'CaseNotFoundError';
+  }
+}
+
+export class NotAScreenTestError extends Error {
+  constructor(file: string) {
+    super(`File reference must point to a screen test: ${file}`);
+    this.name = 'NotAScreenTestError';
+  }
+}
 
 export class TestLoader {
+  /** Base path for resolving relative file references */
+  private static basePath: string | null = null;
+
+  /**
+   * Set base path for resolving relative file references
+   */
+  static setBasePath(filePath: string): void {
+    this.basePath = path.dirname(filePath);
+  }
+
   /**
    * Load a test from a file path
    */
   static loadFromFile(filePath: string): LoadedTest {
     const absolutePath = path.resolve(filePath);
+    // Store base path for file reference resolution
+    this.basePath = path.dirname(absolutePath);
     const content = fs.readFileSync(absolutePath, 'utf-8');
     return this.parseTest(content, absolutePath);
   }
@@ -110,9 +139,7 @@ export class TestLoader {
   private static validateFlowTest(data: unknown, filePath: string): FlowTest {
     const test = data as FlowTest;
 
-    if (!test.sources || test.sources.length === 0) {
-      throw new Error(`Flow test '${filePath}' is missing 'sources' field`);
-    }
+    // sources is now optional (not needed when using file references)
     if (!test.metadata) {
       throw new Error(`Flow test '${filePath}' is missing 'metadata' field`);
     }
@@ -124,5 +151,79 @@ export class TestLoader {
     }
 
     return test;
+  }
+
+  // MARK: - File Reference Resolution
+
+  /**
+   * Resolve a file reference to a ScreenTest
+   */
+  static resolveFileReference(fileRef: string): ScreenTest {
+    const resolvedPath = this.resolveFileReferenceURL(fileRef);
+    const loadedTest = this.loadFromFile(resolvedPath);
+
+    if (loadedTest.type !== 'screen') {
+      throw new NotAScreenTestError(fileRef);
+    }
+
+    return loadedTest.test;
+  }
+
+  /**
+   * Resolve a file reference step to test cases
+   */
+  static resolveFileReferenceCases(step: FlowTestStep): TestCase[] {
+    if (!step.file) {
+      return [];
+    }
+
+    const screenTest = this.resolveFileReference(step.file);
+
+    // If specific case is requested
+    if (step.case) {
+      const testCase = screenTest.cases.find(c => c.name === step.case);
+      if (!testCase) {
+        throw new CaseNotFoundError(step.case, step.file);
+      }
+      return [testCase];
+    }
+
+    // If specific cases are requested
+    if (step.cases && step.cases.length > 0) {
+      return step.cases.map(caseName => {
+        const testCase = screenTest.cases.find(c => c.name === caseName);
+        if (!testCase) {
+          throw new CaseNotFoundError(caseName, step.file!);
+        }
+        return testCase;
+      });
+    }
+
+    // Return all cases if no specific case requested
+    return screenTest.cases;
+  }
+
+  /**
+   * Resolve a file reference path to an absolute path
+   */
+  private static resolveFileReferenceURL(fileRef: string): string {
+    if (!this.basePath) {
+      throw new Error(`Base path not set for file reference resolution: ${fileRef}`);
+    }
+
+    // Try different file extensions
+    const candidates = [
+      path.join(this.basePath, `${fileRef}.test.json`),
+      path.join(this.basePath, `${fileRef}.json`),
+      path.join(this.basePath, fileRef)
+    ];
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    throw new Error(`Test file not found: ${fileRef}`);
   }
 }
