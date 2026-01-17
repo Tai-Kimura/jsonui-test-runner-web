@@ -211,8 +211,16 @@ export class TestLoader {
       throw new Error(`Base path not set for file reference resolution: ${fileRef}`);
     }
 
-    // Try different file extensions
+    // Parent of basePath (e.g., tests/ when basePath is tests/flows/)
+    const parentBase = path.dirname(this.basePath);
+
+    // Try different locations and file extensions
+    // Priority: ../screens/ (sibling directory) first, then same directory
     const candidates = [
+      path.join(parentBase, 'screens', fileRef, `${fileRef}.test.json`),
+      path.join(parentBase, 'screens', fileRef, `${fileRef}.json`),
+      path.join(parentBase, 'screens', `${fileRef}.test.json`),
+      path.join(parentBase, 'screens', `${fileRef}.json`),
       path.join(this.basePath, `${fileRef}.test.json`),
       path.join(this.basePath, `${fileRef}.json`),
       path.join(this.basePath, fileRef)
