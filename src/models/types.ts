@@ -92,6 +92,11 @@ export interface FlowTestStep {
   file?: string;
   case?: string;
   cases?: string[];
+  // For block steps (grouped inline actions)
+  block?: string;
+  description?: string;
+  descriptionFile?: string;
+  steps?: FlowTestStep[];
 }
 
 export interface Checkpoint {
@@ -209,6 +214,10 @@ export function isAssertion(step: TestStep): boolean {
 
 export function isFileReference(step: FlowTestStep): boolean {
   return step.file !== undefined;
+}
+
+export function isBlockStep(step: FlowTestStep): boolean {
+  return step.block !== undefined;
 }
 
 export function isInlineStep(step: FlowTestStep): boolean {

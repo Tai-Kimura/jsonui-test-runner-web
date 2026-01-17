@@ -18,7 +18,8 @@ import {
   platformIncludes,
   isAction,
   isAssertion,
-  isFileReference
+  isFileReference,
+  isBlockStep
 } from '../models/types';
 import { TestLoader } from './TestLoader';
 
@@ -276,6 +277,12 @@ export class JsonUITestRunner {
       return;
     }
 
+    // Handle block steps (grouped inline actions)
+    if (isBlockStep(step)) {
+      await this.executeBlockStep(step);
+      return;
+    }
+
     // Handle inline steps - convert FlowTestStep to TestStep and execute
     const testStep: TestStep = {
       action: step.action as TestStep['action'],
@@ -294,6 +301,37 @@ export class JsonUITestRunner {
       amount: step.amount
     };
     await this.executeStep(testStep);
+  }
+
+  private async executeBlockStep(step: FlowTestStep): Promise<void> {
+    const blockSteps = step.steps;
+    if (!blockSteps) {
+      return;
+    }
+
+    this.log(`    Executing block: ${step.block}`);
+
+    // Execute each step in the block
+    for (const innerStep of blockSteps) {
+      // Block steps can only contain action/assert steps (no nested blocks or file references)
+      const testStep: TestStep = {
+        action: innerStep.action as TestStep['action'],
+        assert: innerStep.assert as TestStep['assert'],
+        id: innerStep.id,
+        ids: innerStep.ids,
+        value: innerStep.value,
+        direction: innerStep.direction,
+        duration: innerStep.duration,
+        timeout: innerStep.timeout,
+        ms: innerStep.ms,
+        name: innerStep.name,
+        equals: innerStep.equals,
+        contains: innerStep.contains,
+        path: innerStep.path,
+        amount: innerStep.amount
+      };
+      await this.executeStep(testStep);
+    }
   }
 
   private async executeFileReferenceStep(step: FlowTestStep): Promise<void> {
