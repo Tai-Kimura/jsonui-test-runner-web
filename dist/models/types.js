@@ -10,6 +10,9 @@ exports.getFailedCount = getFailedCount;
 exports.allPassed = allPassed;
 exports.isAction = isAction;
 exports.isAssertion = isAssertion;
+exports.isFileReference = isFileReference;
+exports.isBlockStep = isBlockStep;
+exports.isInlineStep = isInlineStep;
 function platformIncludes(target, platform) {
     if (!target)
         return true;
@@ -33,5 +36,14 @@ function isAction(step) {
 }
 function isAssertion(step) {
     return step.assert !== undefined;
+}
+function isFileReference(step) {
+    return step.file !== undefined;
+}
+function isBlockStep(step) {
+    return step.block !== undefined;
+}
+function isInlineStep(step) {
+    return step.screen !== undefined && (step.action !== undefined || step.assert !== undefined);
 }
 //# sourceMappingURL=types.js.map

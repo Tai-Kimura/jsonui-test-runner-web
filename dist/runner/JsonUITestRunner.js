@@ -8,6 +8,7 @@ exports.TestRunnerBuilder = exports.JsonUITestRunner = void 0;
 const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const types_1 = require("../models/types");
+const TestLoader_1 = require("./TestLoader");
 const DEFAULT_CONFIG = {
     defaultTimeout: 5000,
     screenshotOnFailure: true,
@@ -164,8 +165,10 @@ class JsonUITestRunner {
             };
         }
         this.log(`Running case: ${testCase.name}`);
+        // Apply args substitution if test case has args
+        const processedCase = TestLoader_1.TestLoader.applyArgsSubstitution(testCase);
         try {
-            await this.executeSteps(testCase.steps);
+            await this.executeSteps(processedCase.steps);
             return {
                 testName,
                 caseName: testCase.name,
@@ -198,7 +201,12 @@ class JsonUITestRunner {
     async executeFlowSteps(steps) {
         for (let index = 0; index < steps.length; index++) {
             const step = steps[index];
-            this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
+            if ((0, types_1.isFileReference)(step)) {
+                this.log(`  Flow step ${index + 1}: file=${step.file}`);
+            }
+            else {
+                this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
+            }
             await this.executeFlowStep(step);
         }
     }
@@ -214,7 +222,17 @@ class JsonUITestRunner {
         }
     }
     async executeFlowStep(step) {
-        // Convert FlowTestStep to TestStep and execute
+        // Handle file reference steps
+        if ((0, types_1.isFileReference)(step)) {
+            await this.executeFileReferenceStep(step);
+            return;
+        }
+        // Handle block steps (grouped inline actions)
+        if ((0, types_1.isBlockStep)(step)) {
+            await this.executeBlockStep(step);
+            return;
+        }
+        // Handle inline steps - convert FlowTestStep to TestStep and execute
         const testStep = {
             action: step.action,
             assert: step.assert,
@@ -232,6 +250,54 @@ class JsonUITestRunner {
             amount: step.amount
         };
         await this.executeStep(testStep);
+    }
+    async executeBlockStep(step) {
+        const blockSteps = step.steps;
+        if (!blockSteps) {
+            return;
+        }
+        this.log(`    Executing block: ${step.block}`);
+        // Execute each step in the block
+        for (const innerStep of blockSteps) {
+            // Block steps can only contain action/assert steps (no nested blocks or file references)
+            const testStep = {
+                action: innerStep.action,
+                assert: innerStep.assert,
+                id: innerStep.id,
+                ids: innerStep.ids,
+                value: innerStep.value,
+                direction: innerStep.direction,
+                duration: innerStep.duration,
+                timeout: innerStep.timeout,
+                ms: innerStep.ms,
+                name: innerStep.name,
+                equals: innerStep.equals,
+                contains: innerStep.contains,
+                path: innerStep.path,
+                amount: innerStep.amount
+            };
+            await this.executeStep(testStep);
+        }
+    }
+    async executeFileReferenceStep(step) {
+        const testCases = TestLoader_1.TestLoader.resolveFileReferenceCases(step);
+        for (const testCase of testCases) {
+            // Skip if marked to skip
+            if (testCase.skip) {
+                this.log(`    Skipping case: ${testCase.name}`);
+                continue;
+            }
+            // Check platform compatibility
+            if (!(0, types_1.platformIncludes)(testCase.platform, this.config.platform)) {
+                this.log(`    Skipping case ${testCase.name} - platform mismatch`);
+                continue;
+            }
+            this.log(`    Running referenced case: ${testCase.name}`);
+            // Execute each step in the test case
+            for (const testStep of testCase.steps) {
+                await this.executeStep(testStep);
+            }
+        }
     }
     stepDescription(step) {
         if (step.action) {

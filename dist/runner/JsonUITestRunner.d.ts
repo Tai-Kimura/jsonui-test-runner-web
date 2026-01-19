@@ -40,6 +40,8 @@ export declare class JsonUITestRunner {
     private executeFlowSteps;
     private executeStep;
     private executeFlowStep;
+    private executeBlockStep;
+    private executeFileReferenceStep;
     private stepDescription;
     private takeScreenshot;
     private log;

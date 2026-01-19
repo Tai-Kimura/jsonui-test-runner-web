@@ -40,6 +40,8 @@ export interface TestCase {
   platform?: PlatformTarget;
   initialState?: InitialState;
   steps: TestStep[];
+  /** Default argument values for @{varName} substitution */
+  args?: Record<string, unknown>;
 }
 
 // MARK: - Flow Test
@@ -92,6 +94,8 @@ export interface FlowTestStep {
   file?: string;
   case?: string;
   cases?: string[];
+  /** Arguments to override screen test default args (for file reference steps) */
+  args?: Record<string, unknown>;
   // For block steps (grouped inline actions)
   block?: string;
   description?: string;

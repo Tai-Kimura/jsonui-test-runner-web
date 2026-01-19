@@ -214,8 +214,11 @@ export class JsonUITestRunner {
 
     this.log(`Running case: ${testCase.name}`);
 
+    // Apply args substitution if test case has args
+    const processedCase = TestLoader.applyArgsSubstitution(testCase);
+
     try {
-      await this.executeSteps(testCase.steps);
+      await this.executeSteps(processedCase.steps);
       return {
         testName,
         caseName: testCase.name,

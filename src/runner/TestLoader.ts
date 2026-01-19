@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScreenTest, FlowTest, FlowTestStep, TestCase, LoadedTest } from '../models/types';
+import { ScreenTest, FlowTest, FlowTestStep, TestCase, TestStep, LoadedTest } from '../models/types';
 
 /**
  * Custom error for test loading failures
@@ -170,7 +170,7 @@ export class TestLoader {
   }
 
   /**
-   * Resolve a file reference step to test cases
+   * Resolve a file reference step to test cases with args substitution
    */
   static resolveFileReferenceCases(step: FlowTestStep): TestCase[] {
     if (!step.file) {
@@ -178,6 +178,7 @@ export class TestLoader {
     }
 
     const screenTest = this.resolveFileReference(step.file);
+    const flowArgs = step.args ?? {};
 
     // If specific case is requested
     if (step.case) {
@@ -185,7 +186,7 @@ export class TestLoader {
       if (!testCase) {
         throw new CaseNotFoundError(step.case, step.file);
       }
-      return [testCase];
+      return [this.applyArgsSubstitution(testCase, flowArgs)];
     }
 
     // If specific cases are requested
@@ -195,12 +196,85 @@ export class TestLoader {
         if (!testCase) {
           throw new CaseNotFoundError(caseName, step.file!);
         }
-        return testCase;
+        return this.applyArgsSubstitution(testCase, flowArgs);
       });
     }
 
     // Return all cases if no specific case requested
-    return screenTest.cases;
+    return screenTest.cases.map(testCase => this.applyArgsSubstitution(testCase, flowArgs));
+  }
+
+  // MARK: - Args Substitution
+
+  /**
+   * Apply args substitution to a test case.
+   * Merges screen default args with flow override args, then substitutes @{varName} placeholders.
+   */
+  static applyArgsSubstitution(testCase: TestCase, flowArgs: Record<string, unknown> = {}): TestCase {
+    // Merge screen default args with flow override args
+    const mergedArgs: Record<string, unknown> = { ...(testCase.args ?? {}), ...flowArgs };
+
+    // If no args, return original test case
+    if (Object.keys(mergedArgs).length === 0) {
+      return testCase;
+    }
+
+    // Apply substitution to steps
+    const substitutedSteps = testCase.steps.map(step => this.substituteArgsInStep(step, mergedArgs));
+
+    return { ...testCase, steps: substitutedSteps };
+  }
+
+  /**
+   * Substitute @{varName} placeholders in a TestStep
+   */
+  private static substituteArgsInStep(step: TestStep, args: Record<string, unknown>): TestStep {
+    return {
+      ...step,
+      id: this.substituteArgsInString(step.id, args),
+      ids: step.ids?.map(id => this.substituteArgsInString(id, args) ?? id),
+      text: this.substituteArgsInString(step.text, args),
+      value: this.substituteArgsInString(step.value, args),
+      contains: this.substituteArgsInString(step.contains, args),
+      button: this.substituteArgsInString(step.button, args),
+      label: this.substituteArgsInString(step.label, args),
+      equals: this.substituteArgsInValue(step.equals, args)
+    };
+  }
+
+  /**
+   * Substitute @{varName} placeholders in a string
+   */
+  private static substituteArgsInString(str: string | undefined, args: Record<string, unknown>): string | undefined {
+    if (str === undefined) return undefined;
+
+    const pattern = /@\{([^}]+)\}/g;
+    return str.replace(pattern, (match, varName) => {
+      const value = args[varName];
+      return value !== undefined ? this.valueToString(value) : match;
+    });
+  }
+
+  /**
+   * Substitute @{varName} placeholders in any value (recursively for objects/arrays, only strings substituted)
+   */
+  private static substituteArgsInValue(value: unknown, args: Record<string, unknown>): unknown {
+    if (value === undefined || value === null) return value;
+
+    if (typeof value === 'string') {
+      return this.substituteArgsInString(value, args);
+    }
+
+    return value;
+  }
+
+  /**
+   * Convert any value to string for substitution
+   */
+  private static valueToString(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return String(value);
   }
 
   /**

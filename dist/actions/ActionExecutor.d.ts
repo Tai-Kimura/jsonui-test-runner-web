@@ -26,6 +26,10 @@ export declare class ActionExecutor {
     private executeWait;
     private executeBack;
     private executeScreenshot;
+    private executeAlertTap;
+    private executeSelectOption;
+    private executeTapItem;
+    private executeSelectTab;
     /**
      * Get locator for element by id attribute
      */
@@ -34,5 +38,10 @@ export declare class ActionExecutor {
      * Wait for element to appear by id attribute
      */
     private waitForElement;
+    /**
+     * Tap on a specific text portion within an element
+     * Calculates the approximate position of the target text and clicks there
+     */
+    private tapTextPortion;
 }
 //# sourceMappingURL=ActionExecutor.d.ts.map

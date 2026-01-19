@@ -33,10 +33,12 @@ export interface TestCase {
     platform?: PlatformTarget;
     initialState?: InitialState;
     steps: TestStep[];
+    /** Default argument values for @{varName} substitution */
+    args?: Record<string, unknown>;
 }
 export interface FlowTest {
     type: 'flow';
-    sources: FlowTestSource[];
+    sources?: FlowTestSource[];
     metadata: TestMetadata;
     platform?: PlatformTarget;
     initialState?: FlowInitialState;
@@ -55,11 +57,12 @@ export interface FlowInitialState {
     viewModels?: Record<string, Record<string, unknown>>;
 }
 export interface FlowTestStep {
-    screen: string;
+    screen?: string;
     action?: string;
     assert?: string;
     id?: string;
     ids?: string[];
+    text?: string;
     value?: string;
     direction?: 'up' | 'down' | 'left' | 'right';
     duration?: number;
@@ -70,6 +73,18 @@ export interface FlowTestStep {
     contains?: string;
     path?: string;
     amount?: number;
+    button?: string;
+    label?: string;
+    index?: number;
+    file?: string;
+    case?: string;
+    cases?: string[];
+    /** Arguments to override screen test default args (for file reference steps) */
+    args?: Record<string, unknown>;
+    block?: string;
+    description?: string;
+    descriptionFile?: string;
+    steps?: FlowTestStep[];
 }
 export interface Checkpoint {
     name: string;
@@ -81,6 +96,7 @@ export interface TestStep {
     assert?: AssertionType;
     id?: string;
     ids?: string[];
+    text?: string;
     value?: string;
     direction?: 'up' | 'down' | 'left' | 'right';
     duration?: number;
@@ -91,8 +107,11 @@ export interface TestStep {
     contains?: string;
     path?: string;
     amount?: number;
+    button?: string;
+    label?: string;
+    index?: number;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab';
 export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
@@ -122,4 +141,7 @@ export type LoadedTest = {
 };
 export declare function isAction(step: TestStep): boolean;
 export declare function isAssertion(step: TestStep): boolean;
+export declare function isFileReference(step: FlowTestStep): boolean;
+export declare function isBlockStep(step: FlowTestStep): boolean;
+export declare function isInlineStep(step: FlowTestStep): boolean;
 //# sourceMappingURL=types.d.ts.map
