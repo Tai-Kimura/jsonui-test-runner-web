@@ -137,8 +137,13 @@ export class AssertionExecutor {
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
         return el.value;
       }
-      // Check for nested input/textarea
-      const input = el.querySelector('input, textarea');
+      // Check for nested input/textarea. Checkbox/radio inputs are excluded:
+      // their `value` is a form-submission token (default "on"), not
+      // user-visible text — for composite controls (label + input) the
+      // visible text is the label's textContent.
+      const input = el.querySelector(
+        'input:not([type="checkbox"]):not([type="radio"]), textarea'
+      );
       if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
         return input.value;
       }
