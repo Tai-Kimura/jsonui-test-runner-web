@@ -210,6 +210,25 @@ Tests can be platform-specific:
 }
 ```
 
+## API mocks
+
+Run against the JsonUI mock server (`jsonui-test mock serve`) to test empty/error
+states deterministically. Point the app at the mock server via
+`launch.arguments.apiBase`, and give the runner the server URL + admin token:
+
+```typescript
+const runner = createRunner()
+  .mockServer('http://127.0.0.1:8790', process.env.JSONUI_MOCK_TOKEN!)
+  .build(page);
+```
+
+- A screen test's root `mocks` (e.g. `{"listStocks": "empty"}`) is applied and the
+  page reloaded before the cases run. Split normal/empty/error into separate test
+  files (one scenario set each).
+- In flow tests, a `setMocks` step switches scenarios mid-flow; the next navigation
+  re-fetches under them.
+- Scenarios reset to `default` at the end of each run.
+
 ## License
 
 MIT License
