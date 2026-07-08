@@ -1,5 +1,5 @@
 {
-  "name": "@jsonui/test-runner-web",
+  "name": "@tai-kimura/jsonui-test-runner-web",
   "version": "1.0.0",
   "description": "JsonUI Test Runner for Web - Playwright-based test runner for ReactJsonUI applications",
   "main": "dist/index.js",
@@ -22,7 +22,7 @@
     "react",
     "automation"
   ],
-  "author": "",
+  "author": "Taichiro Kimura",
   "license": "MIT",
   "peerDependencies": {
     "playwright": ">=1.40.0"
