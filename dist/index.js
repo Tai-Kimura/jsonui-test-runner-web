@@ -20,7 +20,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
+exports.applyLaunchConfig = exports.ResultsWriter = exports.WindowStateProvider = exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
 exports.createRunner = createRunner;
 // Models
 __exportStar(require("./models/types"), exports);
@@ -36,6 +36,12 @@ Object.defineProperty(exports, "TestLoader", { enumerable: true, get: function (
 var JsonUITestRunner_1 = require("./runner/JsonUITestRunner");
 Object.defineProperty(exports, "JsonUITestRunner", { enumerable: true, get: function () { return JsonUITestRunner_1.JsonUITestRunner; } });
 Object.defineProperty(exports, "TestRunnerBuilder", { enumerable: true, get: function () { return JsonUITestRunner_1.TestRunnerBuilder; } });
+var StateProvider_1 = require("./runner/StateProvider");
+Object.defineProperty(exports, "WindowStateProvider", { enumerable: true, get: function () { return StateProvider_1.WindowStateProvider; } });
+var ResultsWriter_1 = require("./runner/ResultsWriter");
+Object.defineProperty(exports, "ResultsWriter", { enumerable: true, get: function () { return ResultsWriter_1.ResultsWriter; } });
+var LaunchConfig_1 = require("./runner/LaunchConfig");
+Object.defineProperty(exports, "applyLaunchConfig", { enumerable: true, get: function () { return LaunchConfig_1.applyLaunchConfig; } });
 // Convenience function for creating test runners
 const JsonUITestRunner_2 = require("./runner/JsonUITestRunner");
 function createRunner() {

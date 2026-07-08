@@ -11,6 +11,7 @@ exports.allPassed = allPassed;
 exports.isAction = isAction;
 exports.isAssertion = isAssertion;
 exports.isFileReference = isFileReference;
+exports.deepEquals = deepEquals;
 exports.isBlockStep = isBlockStep;
 exports.isInlineStep = isInlineStep;
 function platformIncludes(target, platform) {
@@ -39,6 +40,20 @@ function isAssertion(step) {
 }
 function isFileReference(step) {
     return step.file !== undefined;
+}
+/**
+ * Deep equality for state values (primitives compared strictly, objects/arrays structurally)
+ */
+function deepEquals(a, b) {
+    if (a === b)
+        return true;
+    if (a === null || b === null || a === undefined || b === undefined)
+        return false;
+    if (typeof a !== typeof b)
+        return false;
+    if (typeof a !== 'object')
+        return false;
+    return JSON.stringify(a) === JSON.stringify(b);
 }
 function isBlockStep(step) {
     return step.block !== undefined;

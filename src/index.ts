@@ -17,6 +17,9 @@ export { AssertionExecutor } from './assertions/AssertionExecutor';
 // Runner
 export { TestLoader } from './runner/TestLoader';
 export { JsonUITestRunner, TestRunnerBuilder, TestRunnerConfig } from './runner/JsonUITestRunner';
+export { StateProvider, WindowStateProvider } from './runner/StateProvider';
+export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
+export { applyLaunchConfig } from './runner/LaunchConfig';
 
 // Convenience function for creating test runners
 import { TestRunnerBuilder } from './runner/JsonUITestRunner';

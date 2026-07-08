@@ -1,0 +1,1 @@
+{"version":3,"file":"LaunchConfig.d.ts","sourceRoot":"","sources":["../../src/runner/LaunchConfig.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,OAAO,EAAE,cAAc,EAAE,MAAM,YAAY,CAAC;AAC5C,OAAO,EAAE,YAAY,EAAE,MAAM,iBAAiB,CAAC;AAa/C;;;;;;;;;;GAUG;AACH,wBAAsB,iBAAiB,CACrC,OAAO,EAAE,cAAc,EACvB,MAAM,EAAE,YAAY,EACpB,SAAS,CAAC,EAAE,MAAM,GACjB,OAAO,CAAC,IAAI,CAAC,CAsDf"}

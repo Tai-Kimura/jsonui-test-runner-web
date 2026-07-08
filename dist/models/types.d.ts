@@ -8,6 +8,8 @@ export interface ScreenTest {
     metadata: TestMetadata;
     platform?: PlatformTarget;
     initialState?: InitialState;
+    /** App launch configuration (apply via applyLaunchConfig before navigation) */
+    launch?: LaunchConfig;
     setup?: TestStep[];
     teardown?: TestStep[];
     cases: TestCase[];
@@ -42,6 +44,8 @@ export interface FlowTest {
     metadata: TestMetadata;
     platform?: PlatformTarget;
     initialState?: FlowInitialState;
+    /** App launch configuration (apply via applyLaunchConfig before navigation) */
+    launch?: LaunchConfig;
     setup?: FlowTestStep[];
     teardown?: FlowTestStep[];
     steps: FlowTestStep[];
@@ -76,6 +80,32 @@ export interface FlowTestStep {
     button?: string;
     label?: string;
     index?: number;
+    /** When true, a failure of this step is recorded as a warning and execution continues */
+    optional?: boolean;
+    /** Pre-condition; step is skipped when not satisfied (also valid on file/block steps) */
+    when?: WhenCondition;
+    /** Re-tap once when the UI did not change after the tap (accepted, no-op on web) */
+    retryTapIfNoChange?: boolean;
+    /** Scrollable container id for scrollUntilVisible */
+    container?: string;
+    /** Runtime variable name for readText */
+    variable?: string;
+    /** Iteration count for repeat */
+    times?: number;
+    /** Loop condition for repeat */
+    while?: WhenCondition;
+    /** Number of retries for retry (0-3) */
+    maxRetries?: number;
+    /** Latitude for setLocation */
+    latitude?: number;
+    /** Longitude for setLocation */
+    longitude?: number;
+    /** Media file paths for addMedia */
+    paths?: string[];
+    /** Crop element id for screenshot assertion */
+    cropId?: string;
+    /** Similarity threshold (0-100) for screenshot assertion */
+    threshold?: number;
     file?: string;
     case?: string;
     cases?: string[];
@@ -90,6 +120,28 @@ export interface Checkpoint {
     name: string;
     afterStep: number;
     screenshot?: boolean;
+}
+export interface WhenCondition {
+    /** Instant check: element is currently visible */
+    visible?: string;
+    /** Instant check: element is currently absent or invisible */
+    notVisible?: string;
+    /** Current platform matches (same matching rules as the step-level platform field) */
+    platform?: PlatformTarget;
+    /** ViewModel state matches (requires a state provider) */
+    state?: {
+        path: string;
+        equals: unknown;
+    };
+}
+export type LaunchPermissionValue = 'allow' | 'deny' | 'unset';
+export interface LaunchConfig {
+    /** Clear cookies + local/session storage for the origin before launch */
+    clearState?: boolean;
+    /** Permission grants applied before launch (camera, microphone, location, notifications, photos, contacts, calendar, bluetooth) */
+    permissions?: Record<string, LaunchPermissionValue>;
+    /** Launch arguments written to sessionStorage["JSONUI_TEST_ARGS"] as JSON */
+    arguments?: Record<string, string | number | boolean>;
 }
 export interface TestStep {
     action?: ActionType;
@@ -110,16 +162,48 @@ export interface TestStep {
     button?: string;
     label?: string;
     index?: number;
+    /** When true, a failure of this step is recorded as a warning and execution continues */
+    optional?: boolean;
+    /** Pre-condition; step is skipped when not satisfied */
+    when?: WhenCondition;
+    /** Re-tap once when the UI did not change after the tap (accepted, no-op on web) */
+    retryTapIfNoChange?: boolean;
+    /** Scrollable container id for scrollUntilVisible */
+    container?: string;
+    /** Runtime variable name for readText */
+    variable?: string;
+    /** Iteration count for repeat */
+    times?: number;
+    /** Loop condition for repeat */
+    while?: WhenCondition;
+    /** Nested steps for repeat/retry control steps */
+    steps?: TestStep[];
+    /** Number of retries for retry (0-3) */
+    maxRetries?: number;
+    /** Latitude for setLocation */
+    latitude?: number;
+    /** Longitude for setLocation */
+    longitude?: number;
+    /** Media file paths for addMedia */
+    paths?: string[];
+    /** Crop element id for screenshot assertion */
+    cropId?: string;
+    /** Similarity threshold (0-100) for screenshot assertion */
+    threshold?: number;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab';
-export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia';
+export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
 export interface TestResult {
     testName: string;
     caseName: string;
     passed: boolean;
+    /** True when the case was skipped (skip flag or platform mismatch); passed stays true for compatibility */
+    skipped?: boolean;
     error?: string;
+    /** Warnings collected during the case (optional-step failures, baseline created, ...) */
+    warnings?: string[];
     durationMs: number;
 }
 export interface TestSuiteResult {
@@ -142,6 +226,10 @@ export type LoadedTest = {
 export declare function isAction(step: TestStep): boolean;
 export declare function isAssertion(step: TestStep): boolean;
 export declare function isFileReference(step: FlowTestStep): boolean;
+/**
+ * Deep equality for state values (primitives compared strictly, objects/arrays structurally)
+ */
+export declare function deepEquals(a: unknown, b: unknown): boolean;
 export declare function isBlockStep(step: FlowTestStep): boolean;
 export declare function isInlineStep(step: FlowTestStep): boolean;
 //# sourceMappingURL=types.d.ts.map

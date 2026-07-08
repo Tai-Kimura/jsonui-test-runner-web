@@ -2,7 +2,7 @@
  * JsonUI Test Runner - Web Driver
  * Test loader for loading test definitions from JSON files
  */
-import { ScreenTest, FlowTestStep, TestCase, LoadedTest } from '../models/types';
+import { ScreenTest, FlowTestStep, TestCase, TestStep, LoadedTest } from '../models/types';
 /**
  * Custom error for test loading failures
  */
@@ -60,6 +60,14 @@ export declare class TestLoader {
      * Merges screen default args with flow override args, then substitutes @{varName} placeholders.
      */
     static applyArgsSubstitution(testCase: TestCase, flowArgs?: Record<string, unknown>): TestCase;
+    /**
+     * Substitute remaining @{varName} placeholders with runtime variables (readText results).
+     * Applied at step-execution time, AFTER load-time args substitution. Unknown names
+     * stay as literal text (consistent with args behavior). Does not recurse into
+     * nested control-step 'steps' - those are resolved when they execute (so a
+     * readText inside a repeat block updates the value for later iterations).
+     */
+    static substituteRuntimeVariables(step: TestStep, variables: Record<string, unknown>): TestStep;
     /**
      * Substitute @{varName} placeholders in a TestStep
      */

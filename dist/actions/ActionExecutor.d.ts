@@ -9,7 +9,9 @@ import { TestStep } from '../models/types';
 export declare class ActionExecutor {
     private page;
     private defaultTimeout;
-    constructor(page: Page, defaultTimeout?: number);
+    /** Runtime variable store shared with the runner (written by readText) */
+    private variables;
+    constructor(page: Page, defaultTimeout?: number, variables?: Record<string, string>);
     /**
      * Execute an action step
      */
@@ -30,6 +32,15 @@ export declare class ActionExecutor {
     private executeSelectOption;
     private executeTapItem;
     private executeSelectTab;
+    private executeScrollUntilVisible;
+    /**
+     * Scroll one step in the given direction. Returns a marker string describing the
+     * scroll position after scrolling (used for end-reached detection), or null if unknown.
+     */
+    private scrollOneStep;
+    private executeReadText;
+    private executeSetLocation;
+    private executeAddMedia;
     /**
      * Get locator for element by id attribute
      */

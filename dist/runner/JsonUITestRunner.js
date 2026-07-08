@@ -9,22 +9,33 @@ const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const types_1 = require("../models/types");
 const TestLoader_1 = require("./TestLoader");
+/** Safety cap for `repeat` with a `while` condition and no `times` */
+const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
     defaultTimeout: 5000,
     screenshotOnFailure: true,
     screenshotDir: './screenshots',
     platform: 'web',
-    verbose: false
+    verbose: false,
+    stateProvider: undefined,
+    baselineDir: './baselines',
+    updateBaselines: false
 };
 /**
  * Main test runner for JsonUI tests
  */
 class JsonUITestRunner {
     constructor(page, config = {}) {
+        /** Runtime variables written by readText, shared with the action executor */
+        this.variables = {};
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.page = page;
-        this.actionExecutor = new ActionExecutor_1.ActionExecutor(page, this.config.defaultTimeout);
-        this.assertionExecutor = new AssertionExecutor_1.AssertionExecutor(page, this.config.defaultTimeout);
+        this.actionExecutor = new ActionExecutor_1.ActionExecutor(page, this.config.defaultTimeout, this.variables);
+        this.assertionExecutor = new AssertionExecutor_1.AssertionExecutor(page, this.config.defaultTimeout, {
+            stateProvider: this.config.stateProvider,
+            baselineDir: this.config.baselineDir,
+            updateBaselines: this.config.updateBaselines
+        });
     }
     /**
      * Run a loaded test
@@ -56,37 +67,55 @@ class JsonUITestRunner {
                 totalDurationMs: 0
             };
         }
-        // Run setup
+        // Run setup. If setup throws, every case is recorded as failed but teardown still runs.
+        let setupError = null;
         if (test.setup) {
             this.log('Running setup...');
             try {
-                await this.executeSteps(test.setup);
+                await this.executeSteps(test.setup, []);
             }
             catch (error) {
-                this.log(`Setup failed: ${error instanceof Error ? error.message : String(error)}`);
-                throw error;
+                setupError = error instanceof Error ? error.message : String(error);
+                this.log(`Setup failed: ${setupError}`);
             }
         }
         // Run test cases
         for (const testCase of test.cases) {
+            if (setupError !== null) {
+                results.push({
+                    testName: test.metadata.name,
+                    caseName: testCase.name,
+                    passed: false,
+                    error: `setup failed: ${setupError}`,
+                    durationMs: 0
+                });
+                continue;
+            }
             const result = await this.runTestCase(test.metadata.name, testCase);
             results.push(result);
         }
-        // Run teardown
+        // Run teardown (guaranteed). A teardown failure is recorded as an extra failed result.
         if (test.teardown) {
             this.log('Running teardown...');
             try {
-                await this.executeSteps(test.teardown);
+                await this.executeSteps(test.teardown, []);
             }
             catch (error) {
-                this.log(`Teardown failed: ${error instanceof Error ? error.message : String(error)}`);
+                const message = error instanceof Error ? error.message : String(error);
+                this.log(`Teardown failed: ${message}`);
+                results.push({
+                    testName: test.metadata.name,
+                    caseName: 'teardown',
+                    passed: false,
+                    error: message,
+                    durationMs: 0
+                });
             }
         }
-        const totalDuration = Date.now() - startTime;
         return {
             suiteName: test.metadata.name,
             results,
-            totalDurationMs: totalDuration
+            totalDurationMs: Date.now() - startTime
         };
     }
     /**
@@ -103,42 +132,52 @@ class JsonUITestRunner {
                 totalDurationMs: 0
             };
         }
-        const result = await (async () => {
+        const results = [];
+        const warnings = [];
+        let flowError = null;
+        try {
+            // Run setup
+            if (test.setup) {
+                this.log('Running flow setup...');
+                await this.executeFlowSteps(test.setup, warnings);
+            }
+            // Run flow steps
+            this.log('Running flow steps...');
+            await this.executeFlowSteps(test.steps, warnings);
+        }
+        catch (error) {
+            flowError = error instanceof Error ? error.message : String(error);
+            this.log(`Flow test failed: ${flowError}`);
+        }
+        results.push({
+            testName: test.metadata.name,
+            caseName: 'flow',
+            passed: flowError === null,
+            error: flowError ?? undefined,
+            warnings: warnings.length > 0 ? warnings : undefined,
+            durationMs: Date.now() - startTime
+        });
+        // Run teardown (guaranteed)
+        if (test.teardown) {
+            this.log('Running flow teardown...');
             try {
-                // Run setup
-                if (test.setup) {
-                    this.log('Running flow setup...');
-                    await this.executeFlowSteps(test.setup);
-                }
-                // Run flow steps
-                this.log('Running flow steps...');
-                await this.executeFlowSteps(test.steps);
-                // Run teardown
-                if (test.teardown) {
-                    this.log('Running flow teardown...');
-                    await this.executeFlowSteps(test.teardown);
-                }
-                return {
-                    testName: test.metadata.name,
-                    caseName: 'flow',
-                    passed: true,
-                    durationMs: Date.now() - startTime
-                };
+                await this.executeFlowSteps(test.teardown, []);
             }
             catch (error) {
-                this.log(`Flow test failed: ${error instanceof Error ? error.message : String(error)}`);
-                return {
+                const message = error instanceof Error ? error.message : String(error);
+                this.log(`Flow teardown failed: ${message}`);
+                results.push({
                     testName: test.metadata.name,
-                    caseName: 'flow',
+                    caseName: 'teardown',
                     passed: false,
-                    error: error instanceof Error ? error.message : String(error),
-                    durationMs: Date.now() - startTime
-                };
+                    error: message,
+                    durationMs: 0
+                });
             }
-        })();
+        }
         return {
             suiteName: test.metadata.name,
-            results: [result],
+            results,
             totalDurationMs: Date.now() - startTime
         };
     }
@@ -151,6 +190,7 @@ class JsonUITestRunner {
                 testName,
                 caseName: testCase.name,
                 passed: true,
+                skipped: true,
                 durationMs: 0
             };
         }
@@ -161,18 +201,21 @@ class JsonUITestRunner {
                 testName,
                 caseName: testCase.name,
                 passed: true,
+                skipped: true,
                 durationMs: 0
             };
         }
         this.log(`Running case: ${testCase.name}`);
-        // Apply args substitution if test case has args
+        // Apply load-time args substitution if test case has args
         const processedCase = TestLoader_1.TestLoader.applyArgsSubstitution(testCase);
+        const warnings = [];
         try {
-            await this.executeSteps(processedCase.steps);
+            await this.executeSteps(processedCase.steps, warnings);
             return {
                 testName,
                 caseName: testCase.name,
                 passed: true,
+                warnings: warnings.length > 0 ? warnings : undefined,
                 durationMs: Date.now() - startTime
             };
         }
@@ -187,99 +230,203 @@ class JsonUITestRunner {
                 caseName: testCase.name,
                 passed: false,
                 error: errorMessage,
+                warnings: warnings.length > 0 ? warnings : undefined,
                 durationMs: Date.now() - startTime
             };
         }
     }
-    async executeSteps(steps) {
+    async executeSteps(steps, warnings) {
         for (let index = 0; index < steps.length; index++) {
-            const step = steps[index];
+            const rawStep = steps[index];
+            // Resolve runtime variables (@{name}) at execution time, after load-time args
+            const step = TestLoader_1.TestLoader.substituteRuntimeVariables(rawStep, this.variables);
             this.log(`  Step ${index + 1}: ${this.stepDescription(step)}`);
-            await this.executeStep(step);
+            await this.executeStepGuarded(step, warnings);
         }
     }
-    async executeFlowSteps(steps) {
-        for (let index = 0; index < steps.length; index++) {
-            const step = steps[index];
-            if ((0, types_1.isFileReference)(step)) {
-                this.log(`  Flow step ${index + 1}: file=${step.file}`);
+    /**
+     * Execute a single step honoring `when` (skip), `optional` (failure→warning),
+     * and control steps (repeat/retry).
+     */
+    async executeStepGuarded(step, warnings) {
+        // Evaluate `when` pre-condition
+        if (step.when && !(await this.evaluateCondition(step.when))) {
+            this.log(`    Skipped (when not satisfied): ${step.label ?? this.stepDescription(step)}`);
+            return;
+        }
+        try {
+            await this.executeStep(step, warnings);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (step.optional) {
+                const label = step.label ?? this.stepDescription(step);
+                warnings.push(`optional step failed (${label}): ${message}`);
+                this.log(`    Optional step failed, continuing: ${message}`);
+                return;
             }
-            else {
-                this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
-            }
-            await this.executeFlowStep(step);
+            throw error;
         }
     }
-    async executeStep(step) {
+    async executeStep(step, warnings) {
+        // Control steps
+        if (step.action === 'repeat') {
+            await this.executeRepeat(step, warnings);
+            return;
+        }
+        if (step.action === 'retry') {
+            await this.executeRetry(step, warnings);
+            return;
+        }
         if ((0, types_1.isAction)(step)) {
             await this.actionExecutor.execute(step);
         }
         else if ((0, types_1.isAssertion)(step)) {
             await this.assertionExecutor.execute(step);
+            // Drain warnings produced by the assertion (e.g. baseline created)
+            if (this.assertionExecutor.warnings.length > 0) {
+                warnings.push(...this.assertionExecutor.warnings);
+                this.assertionExecutor.warnings = [];
+            }
         }
         else {
             throw new Error("Step must have either 'action' or 'assert'");
         }
     }
-    async executeFlowStep(step) {
+    async executeRepeat(step, warnings) {
+        const steps = step.steps ?? [];
+        const hasTimes = typeof step.times === 'number';
+        const hasWhile = step.while !== undefined;
+        if (hasTimes && hasWhile) {
+            // Loop while condition holds, at most `times` iterations (times is the cap)
+            for (let i = 0; i < step.times; i++) {
+                if (!(await this.evaluateCondition(step.while))) {
+                    return;
+                }
+                await this.executeSteps(steps, warnings);
+            }
+            return;
+        }
+        if (hasTimes) {
+            for (let i = 0; i < step.times; i++) {
+                await this.executeSteps(steps, warnings);
+            }
+            return;
+        }
+        // while only: safety cap of REPEAT_WHILE_CAP
+        for (let i = 0; i < REPEAT_WHILE_CAP; i++) {
+            if (!(await this.evaluateCondition(step.while))) {
+                return;
+            }
+            await this.executeSteps(steps, warnings);
+        }
+        // Cap reached while the condition still holds
+        if (await this.evaluateCondition(step.while)) {
+            throw new Error(`repeat exceeded ${REPEAT_WHILE_CAP} iterations (possible infinite loop)`);
+        }
+    }
+    async executeRetry(step, warnings) {
+        const steps = step.steps ?? [];
+        const maxRetries = Math.min(step.maxRetries ?? 1, 3);
+        let lastError;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                // Retried steps must NOT leak partial warnings on a failed attempt
+                const attemptWarnings = [];
+                await this.executeSteps(steps, attemptWarnings);
+                warnings.push(...attemptWarnings);
+                return;
+            }
+            catch (error) {
+                lastError = error;
+                this.log(`    Retry attempt ${attempt + 1}/${maxRetries + 1} failed`);
+            }
+        }
+        throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
+    /**
+     * Evaluate a `when` / `while` condition. Multiple keys are ANDed.
+     */
+    async evaluateCondition(condition) {
+        if (condition.platform !== undefined) {
+            if (!(0, types_1.platformIncludes)(condition.platform, this.config.platform)) {
+                return false;
+            }
+        }
+        if (condition.visible !== undefined) {
+            if (!(await this.isInstantlyVisible(condition.visible))) {
+                return false;
+            }
+        }
+        if (condition.notVisible !== undefined) {
+            if (await this.isInstantlyVisible(condition.notVisible)) {
+                return false;
+            }
+        }
+        if (condition.state !== undefined) {
+            if (!this.config.stateProvider) {
+                throw new Error(`Cannot evaluate state condition '${condition.state.path}': no state provider configured`);
+            }
+            const actual = await this.config.stateProvider.getValue(condition.state.path);
+            if (!(0, types_1.deepEquals)(actual, condition.state.equals)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    /** Instant visibility check (no polling) used by conditions */
+    async isInstantlyVisible(id) {
+        const element = this.page.locator(`#${id}`);
+        if (await element.count() === 0) {
+            return false;
+        }
+        return element.first().isVisible();
+    }
+    async executeFlowSteps(steps, warnings) {
+        for (let index = 0; index < steps.length; index++) {
+            const step = steps[index];
+            if ((0, types_1.isFileReference)(step)) {
+                this.log(`  Flow step ${index + 1}: file=${step.file}`);
+            }
+            else if ((0, types_1.isBlockStep)(step)) {
+                this.log(`  Flow step ${index + 1}: block=${step.block}`);
+            }
+            else {
+                this.log(`  Flow step ${index + 1}: screen=${step.screen}`);
+            }
+            await this.executeFlowStep(step, warnings);
+        }
+    }
+    async executeFlowStep(step, warnings) {
+        // Evaluate step-level `when` for file/block/inline steps
+        if (step.when && !(await this.evaluateCondition(step.when))) {
+            this.log(`    Skipped flow step (when not satisfied)`);
+            return;
+        }
         // Handle file reference steps
         if ((0, types_1.isFileReference)(step)) {
-            await this.executeFileReferenceStep(step);
+            await this.executeFileReferenceStep(step, warnings);
             return;
         }
         // Handle block steps (grouped inline actions)
         if ((0, types_1.isBlockStep)(step)) {
-            await this.executeBlockStep(step);
+            await this.executeBlockStep(step, warnings);
             return;
         }
         // Handle inline steps - convert FlowTestStep to TestStep and execute
-        const testStep = {
-            action: step.action,
-            assert: step.assert,
-            id: step.id,
-            ids: step.ids,
-            value: step.value,
-            direction: step.direction,
-            duration: step.duration,
-            timeout: step.timeout,
-            ms: step.ms,
-            name: step.name,
-            equals: step.equals,
-            contains: step.contains,
-            path: step.path,
-            amount: step.amount
-        };
-        await this.executeStep(testStep);
+        await this.executeStepGuarded(this.toTestStep(step), warnings);
     }
-    async executeBlockStep(step) {
+    async executeBlockStep(step, warnings) {
         const blockSteps = step.steps;
         if (!blockSteps) {
             return;
         }
         this.log(`    Executing block: ${step.block}`);
-        // Execute each step in the block
         for (const innerStep of blockSteps) {
-            // Block steps can only contain action/assert steps (no nested blocks or file references)
-            const testStep = {
-                action: innerStep.action,
-                assert: innerStep.assert,
-                id: innerStep.id,
-                ids: innerStep.ids,
-                value: innerStep.value,
-                direction: innerStep.direction,
-                duration: innerStep.duration,
-                timeout: innerStep.timeout,
-                ms: innerStep.ms,
-                name: innerStep.name,
-                equals: innerStep.equals,
-                contains: innerStep.contains,
-                path: innerStep.path,
-                amount: innerStep.amount
-            };
-            await this.executeStep(testStep);
+            await this.executeStepGuarded(this.toTestStep(innerStep), warnings);
         }
     }
-    async executeFileReferenceStep(step) {
+    async executeFileReferenceStep(step, warnings) {
         const testCases = TestLoader_1.TestLoader.resolveFileReferenceCases(step);
         for (const testCase of testCases) {
             // Skip if marked to skip
@@ -293,18 +440,52 @@ class JsonUITestRunner {
                 continue;
             }
             this.log(`    Running referenced case: ${testCase.name}`);
-            // Execute each step in the test case
-            for (const testStep of testCase.steps) {
-                await this.executeStep(testStep);
-            }
+            await this.executeSteps(testCase.steps, warnings);
         }
+    }
+    /** Convert a FlowTestStep (inline / block child) into a TestStep for execution */
+    toTestStep(step) {
+        return {
+            action: step.action,
+            assert: step.assert,
+            id: step.id,
+            ids: step.ids,
+            text: step.text,
+            value: step.value,
+            direction: step.direction,
+            duration: step.duration,
+            timeout: step.timeout,
+            ms: step.ms,
+            name: step.name,
+            equals: step.equals,
+            contains: step.contains,
+            path: step.path,
+            amount: step.amount,
+            button: step.button,
+            label: step.label,
+            index: step.index,
+            optional: step.optional,
+            when: step.when,
+            retryTapIfNoChange: step.retryTapIfNoChange,
+            container: step.container,
+            variable: step.variable,
+            times: step.times,
+            while: step.while,
+            steps: step.steps?.map(s => this.toTestStep(s)),
+            maxRetries: step.maxRetries,
+            latitude: step.latitude,
+            longitude: step.longitude,
+            paths: step.paths,
+            cropId: step.cropId,
+            threshold: step.threshold
+        };
     }
     stepDescription(step) {
         if (step.action) {
             return `action=${step.action}, id=${step.id ?? step.ids?.join(',') ?? '-'}`;
         }
         if (step.assert) {
-            return `assert=${step.assert}, id=${step.id ?? '-'}`;
+            return `assert=${step.assert}, id=${step.id ?? step.path ?? '-'}`;
         }
         return 'unknown step';
     }
@@ -342,6 +523,18 @@ class TestRunnerBuilder {
     }
     screenshotDir(dir) {
         this.config.screenshotDir = dir;
+        return this;
+    }
+    stateProvider(provider) {
+        this.config.stateProvider = provider;
+        return this;
+    }
+    baselineDir(dir) {
+        this.config.baselineDir = dir;
+        return this;
+    }
+    updateBaselines(enabled) {
+        this.config.updateBaselines = enabled;
         return this;
     }
     verbose(enabled) {

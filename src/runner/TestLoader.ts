@@ -226,9 +226,23 @@ export class TestLoader {
   }
 
   /**
+   * Substitute remaining @{varName} placeholders with runtime variables (readText results).
+   * Applied at step-execution time, AFTER load-time args substitution. Unknown names
+   * stay as literal text (consistent with args behavior). Does not recurse into
+   * nested control-step 'steps' - those are resolved when they execute (so a
+   * readText inside a repeat block updates the value for later iterations).
+   */
+  static substituteRuntimeVariables(step: TestStep, variables: Record<string, unknown>): TestStep {
+    if (Object.keys(variables).length === 0) {
+      return step;
+    }
+    return this.substituteArgsInStep(step, variables, false);
+  }
+
+  /**
    * Substitute @{varName} placeholders in a TestStep
    */
-  private static substituteArgsInStep(step: TestStep, args: Record<string, unknown>): TestStep {
+  private static substituteArgsInStep(step: TestStep, args: Record<string, unknown>, recurse: boolean = true): TestStep {
     return {
       ...step,
       id: this.substituteArgsInString(step.id, args),
@@ -238,7 +252,14 @@ export class TestLoader {
       contains: this.substituteArgsInString(step.contains, args),
       button: this.substituteArgsInString(step.button, args),
       label: this.substituteArgsInString(step.label, args),
-      equals: this.substituteArgsInValue(step.equals, args)
+      name: this.substituteArgsInString(step.name, args),
+      path: this.substituteArgsInString(step.path, args),
+      container: this.substituteArgsInString(step.container, args),
+      cropId: this.substituteArgsInString(step.cropId, args),
+      equals: this.substituteArgsInValue(step.equals, args),
+      // Nested control-step (repeat/retry) steps are substituted recursively at
+      // load time only; runtime substitution resolves them at their own execution
+      steps: recurse ? step.steps?.map(s => this.substituteArgsInStep(s, args, true)) : step.steps
     };
   }
 

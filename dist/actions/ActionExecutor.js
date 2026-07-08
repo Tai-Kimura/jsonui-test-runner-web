@@ -8,9 +8,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ActionExecutor = void 0;
 class ActionExecutor {
-    constructor(page, defaultTimeout = 5000) {
+    constructor(page, defaultTimeout = 5000, variables = {}) {
         this.page = page;
         this.defaultTimeout = defaultTimeout;
+        this.variables = variables;
     }
     /**
      * Execute an action step
@@ -39,6 +40,9 @@ class ActionExecutor {
                 break;
             case 'scroll':
                 await this.executeScroll(step, timeout);
+                break;
+            case 'scrollUntilVisible':
+                await this.executeScrollUntilVisible(step);
                 break;
             case 'swipe':
                 await this.executeSwipe(step, timeout);
@@ -70,6 +74,20 @@ class ActionExecutor {
             case 'selectTab':
                 await this.executeSelectTab(step, timeout);
                 break;
+            case 'readText':
+                await this.executeReadText(step, timeout);
+                break;
+            case 'setLocation':
+                await this.executeSetLocation(step);
+                break;
+            case 'addMedia':
+                await this.executeAddMedia();
+                break;
+            case 'repeat':
+            case 'retry':
+                // Control steps are executed by the runner (they need condition evaluation
+                // and nested step handling); reaching here means the runner was bypassed
+                throw new Error(`'${action}' is a control step and is handled by the test runner`);
             default:
                 throw new Error(`Unknown action: ${action}`);
         }
@@ -376,6 +394,127 @@ class ActionExecutor {
         const tabId = `${id}_tab_${index}`;
         const element = await this.waitForElement(tabId, timeout);
         await element.click();
+    }
+    async executeScrollUntilVisible(step) {
+        const id = step.id;
+        if (!id) {
+            throw new Error("scrollUntilVisible requires 'id'");
+        }
+        const direction = step.direction ?? 'down';
+        const timeout = step.timeout ?? 20000;
+        const target = this.getLocator(id).first();
+        const isTargetVisible = async () => {
+            return (await target.count()) > 0 && await target.isVisible();
+        };
+        if (await isTargetVisible()) {
+            return;
+        }
+        const startTime = Date.now();
+        let previousMarker = null;
+        let unchangedCount = 0;
+        while (Date.now() - startTime < timeout) {
+            const marker = await this.scrollOneStep(step.container, direction);
+            if (await isTargetVisible()) {
+                return;
+            }
+            // End-reached detection: two consecutive scrolls with no position/content change
+            if (marker !== null && marker === previousMarker) {
+                unchangedCount += 1;
+                if (unchangedCount >= 1) {
+                    throw new Error(`Element '${id}' not found after scrolling to the end of ${step.container ? `'${step.container}'` : 'the page'}`);
+                }
+            }
+            else {
+                unchangedCount = 0;
+            }
+            previousMarker = marker;
+            await this.page.waitForTimeout(150);
+        }
+        throw new Error(`Element '${id}' did not become visible within ${timeout}ms of scrolling`);
+    }
+    /**
+     * Scroll one step in the given direction. Returns a marker string describing the
+     * scroll position after scrolling (used for end-reached detection), or null if unknown.
+     */
+    async scrollOneStep(containerId, direction) {
+        if (containerId) {
+            const container = this.getLocator(containerId).first();
+            if (await container.count() === 0) {
+                throw new Error(`scrollUntilVisible container '${containerId}' not found`);
+            }
+            return container.evaluate((el, dir) => {
+                const step = Math.round((dir === 'up' || dir === 'down' ? el.clientHeight : el.clientWidth) * 0.7);
+                switch (dir) {
+                    case 'up':
+                        el.scrollTop -= step;
+                        break;
+                    case 'down':
+                        el.scrollTop += step;
+                        break;
+                    case 'left':
+                        el.scrollLeft -= step;
+                        break;
+                    case 'right':
+                        el.scrollLeft += step;
+                        break;
+                }
+                return `${el.scrollTop},${el.scrollLeft}`;
+            }, direction);
+        }
+        // Scroll the window
+        return this.page.evaluate((dir) => {
+            const step = Math.round((dir === 'up' || dir === 'down' ? window.innerHeight : window.innerWidth) * 0.7);
+            switch (dir) {
+                case 'up':
+                    window.scrollBy(0, -step);
+                    break;
+                case 'down':
+                    window.scrollBy(0, step);
+                    break;
+                case 'left':
+                    window.scrollBy(-step, 0);
+                    break;
+                case 'right':
+                    window.scrollBy(step, 0);
+                    break;
+            }
+            return `${window.scrollY},${window.scrollX}`;
+        }, direction);
+    }
+    async executeReadText(step, timeout) {
+        const id = step.id;
+        if (!id) {
+            throw new Error("readText requires 'id'");
+        }
+        const variable = step.variable;
+        if (!variable) {
+            throw new Error("readText requires 'variable'");
+        }
+        const element = await this.waitForElement(id, timeout);
+        // For input/textarea, read value; otherwise text content
+        const text = await element.evaluate((el) => {
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+                return el.value;
+            }
+            const input = el.querySelector('input:not([type="checkbox"]):not([type="radio"]), textarea');
+            if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
+                return input.value;
+            }
+            return el.textContent ?? '';
+        });
+        this.variables[variable] = text;
+    }
+    async executeSetLocation(step) {
+        const { latitude, longitude } = step;
+        if (latitude === undefined || longitude === undefined) {
+            throw new Error("setLocation requires 'latitude' and 'longitude'");
+        }
+        const context = this.page.context();
+        await context.grantPermissions(['geolocation']);
+        await context.setGeolocation({ latitude, longitude });
+    }
+    async executeAddMedia() {
+        throw new Error('addMedia is not supported on web');
     }
     // Helper functions
     /**

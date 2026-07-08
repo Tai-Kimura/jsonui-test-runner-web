@@ -9,6 +9,9 @@ export { ActionExecutor } from './actions/ActionExecutor';
 export { AssertionExecutor } from './assertions/AssertionExecutor';
 export { TestLoader } from './runner/TestLoader';
 export { JsonUITestRunner, TestRunnerBuilder, TestRunnerConfig } from './runner/JsonUITestRunner';
+export { StateProvider, WindowStateProvider } from './runner/StateProvider';
+export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
+export { applyLaunchConfig } from './runner/LaunchConfig';
 import { TestRunnerBuilder } from './runner/JsonUITestRunner';
 export declare function createRunner(): TestRunnerBuilder;
 //# sourceMappingURL=index.d.ts.map
