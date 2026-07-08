@@ -9,6 +9,7 @@ const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const types_1 = require("../models/types");
 const TestLoader_1 = require("./TestLoader");
+const MockClient_1 = require("./MockClient");
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
@@ -19,7 +20,9 @@ const DEFAULT_CONFIG = {
     verbose: false,
     stateProvider: undefined,
     baselineDir: './baselines',
-    updateBaselines: false
+    updateBaselines: false,
+    mockServerUrl: undefined,
+    mockToken: undefined
 };
 /**
  * Main test runner for JsonUI tests
@@ -36,6 +39,17 @@ class JsonUITestRunner {
             baselineDir: this.config.baselineDir,
             updateBaselines: this.config.updateBaselines
         });
+        this.mockClient = (this.config.mockServerUrl && this.config.mockToken)
+            ? new MockClient_1.MockClient(page.request, this.config.mockServerUrl, this.config.mockToken)
+            : null;
+    }
+    /** Return the configured mock client or throw a clear setup error. */
+    requireMockClient(feature) {
+        if (!this.mockClient) {
+            throw new Error(`'${feature}' requires a mock server: set mockServerUrl + mockToken in the runner config ` +
+                `(from 'jsonui-test mock serve').`);
+        }
+        return this.mockClient;
     }
     /**
      * Run a loaded test
@@ -54,10 +68,6 @@ class JsonUITestRunner {
     async runScreenTest(test, _testPath = '') {
         const results = [];
         const startTime = Date.now();
-        // Wait for UI to be ready
-        this.log('Waiting for UI to be ready...');
-        await this.page.waitForLoadState('networkidle');
-        await this.page.waitForTimeout(500);
         // Check platform compatibility
         if (!(0, types_1.platformIncludes)(test.platform, this.config.platform)) {
             this.log('Skipping test - platform mismatch');
@@ -67,6 +77,18 @@ class JsonUITestRunner {
                 totalDurationMs: 0
             };
         }
+        // Apply the file-level mock scenario set BEFORE the screen fetches, then reload
+        // so the screen re-renders against the selected scenarios. (Scenario switching is
+        // per-file for screen tests; there is no per-case re-open — see plan §8.1.)
+        if (test.mocks) {
+            this.log('Applying mock scenarios and reloading...');
+            await this.requireMockClient('mocks').scenarioSet(test.mocks);
+            await this.page.reload();
+        }
+        // Wait for UI to be ready
+        this.log('Waiting for UI to be ready...');
+        await this.page.waitForLoadState('networkidle');
+        await this.page.waitForTimeout(500);
         // Run setup. If setup throws, every case is recorded as failed but teardown still runs.
         let setupError = null;
         if (test.setup) {
@@ -110,6 +132,15 @@ class JsonUITestRunner {
                     error: message,
                     durationMs: 0
                 });
+            }
+        }
+        // Reset mock scenarios so state does not leak into the next test file.
+        if (test.mocks && this.mockClient) {
+            try {
+                await this.mockClient.reset();
+            }
+            catch (error) {
+                this.log(`Mock reset failed: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
         return {
@@ -173,6 +204,15 @@ class JsonUITestRunner {
                     error: message,
                     durationMs: 0
                 });
+            }
+        }
+        // Reset mock scenarios so a flow's setMocks state does not leak to the next test.
+        if (this.mockClient) {
+            try {
+                await this.mockClient.reset();
+            }
+            catch (error) {
+                this.log(`Mock reset failed: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
         return {
@@ -276,6 +316,11 @@ class JsonUITestRunner {
         }
         if (step.action === 'retry') {
             await this.executeRetry(step, warnings);
+            return;
+        }
+        if (step.action === 'setMocks') {
+            // Switch scenarios mid-flow; the next navigation re-fetches under them.
+            await this.requireMockClient('setMocks').scenarioSet(step.mocks ?? {});
             return;
         }
         if ((0, types_1.isAction)(step)) {
@@ -477,7 +522,8 @@ class JsonUITestRunner {
             longitude: step.longitude,
             paths: step.paths,
             cropId: step.cropId,
-            threshold: step.threshold
+            threshold: step.threshold,
+            mocks: step.mocks
         };
     }
     stepDescription(step) {
@@ -535,6 +581,12 @@ class TestRunnerBuilder {
     }
     updateBaselines(enabled) {
         this.config.updateBaselines = enabled;
+        return this;
+    }
+    /** Point the runner at a running mock server so `mocks` / `setMocks` work. */
+    mockServer(url, token) {
+        this.config.mockServerUrl = url;
+        this.config.mockToken = token;
         return this;
     }
     verbose(enabled) {

@@ -20,6 +20,10 @@ export interface TestRunnerConfig {
     baselineDir?: string;
     /** When true, screenshot baselines are always overwritten and the assertion passes */
     updateBaselines?: boolean;
+    /** Mock server base URL (e.g. http://127.0.0.1:8790). Required to use `mocks` / `setMocks`. */
+    mockServerUrl?: string;
+    /** Admin token printed by `jsonui-test mock serve`. Required with mockServerUrl. */
+    mockToken?: string;
 }
 /**
  * Main test runner for JsonUI tests
@@ -29,9 +33,12 @@ export declare class JsonUITestRunner {
     private page;
     private actionExecutor;
     private assertionExecutor;
+    private mockClient;
     /** Runtime variables written by readText, shared with the action executor */
     private variables;
     constructor(page: Page, config?: TestRunnerConfig);
+    /** Return the configured mock client or throw a clear setup error. */
+    private requireMockClient;
     /**
      * Run a loaded test
      */
@@ -81,6 +88,8 @@ export declare class TestRunnerBuilder {
     stateProvider(provider: StateProvider): this;
     baselineDir(dir: string): this;
     updateBaselines(enabled: boolean): this;
+    /** Point the runner at a running mock server so `mocks` / `setMocks` work. */
+    mockServer(url: string, token: string): this;
     verbose(enabled: boolean): this;
     build(page: Page): JsonUITestRunner;
 }

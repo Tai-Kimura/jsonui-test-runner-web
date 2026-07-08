@@ -10,10 +10,14 @@ export interface ScreenTest {
     initialState?: InitialState;
     /** App launch configuration (apply via applyLaunchConfig before navigation) */
     launch?: LaunchConfig;
+    /** API mock scenario set applied (and the screen reloaded) before the cases run */
+    mocks?: MockScenarioMap;
     setup?: TestStep[];
     teardown?: TestStep[];
     cases: TestCase[];
 }
+/** Map of OpenAPI operationId -> mock scenario name */
+export type MockScenarioMap = Record<string, string>;
 export interface TestSource {
     layout: string;
     spec?: string;
@@ -106,6 +110,8 @@ export interface FlowTestStep {
     cropId?: string;
     /** Similarity threshold (0-100) for screenshot assertion */
     threshold?: number;
+    /** Scenario map for the setMocks action (operationId -> scenario) */
+    mocks?: MockScenarioMap;
     file?: string;
     case?: string;
     cases?: string[];
@@ -190,8 +196,10 @@ export interface TestStep {
     cropId?: string;
     /** Similarity threshold (0-100) for screenshot assertion */
     threshold?: number;
+    /** Scenario map for the setMocks action (operationId -> scenario) */
+    mocks?: MockScenarioMap;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks';
 export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
