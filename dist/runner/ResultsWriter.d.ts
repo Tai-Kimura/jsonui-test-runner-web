@@ -2,7 +2,7 @@
  * JsonUI Test Runner - Web Driver
  * Serializes run results to the standardized results JSON (schemas/results.schema.json)
  */
-import { TestSuiteResult } from '../models/types';
+import { SkipReason, TestSuiteResult } from '../models/types';
 export interface ResultsJson {
     format: 'jsonui-test-results';
     version: 1;
@@ -20,6 +20,8 @@ export interface ResultsJsonResult {
     caseName: string;
     status: 'passed' | 'failed' | 'skipped';
     error?: string;
+    /** Why a skipped result was skipped (platform vs responsive gate); only present on gate-caused skips */
+    skipReason?: SkipReason;
     warnings?: string[];
     durationMs: number;
 }

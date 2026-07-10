@@ -48,6 +48,15 @@ export declare class ActionExecutor {
     private executeReadText;
     private executeSetLocation;
     private executeAddMedia;
+    /** Resize the viewport to sweep responsive breakpoints (web-native drive) */
+    private executeSetViewport;
+    /**
+     * Rotate to the given orientation by swapping the viewport width/height.
+     * Already-matching orientation is a no-op; a `viewport: null` context
+     * (headful / --start-maximized) cannot be resized, so it is a no-op with a
+     * warning — dependent asserts should self-gate with `when.responsive`.
+     */
+    private executeSetOrientation;
     /**
      * Get locator for element by id attribute
      */

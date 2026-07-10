@@ -7,6 +7,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ActionExecutor = void 0;
+const types_1 = require("../models/types");
 class ActionExecutor {
     constructor(page, defaultTimeout = 5000, variables = {}) {
         this.page = page;
@@ -85,6 +86,12 @@ class ActionExecutor {
                 break;
             case 'addMedia':
                 await this.executeAddMedia();
+                break;
+            case 'setViewport':
+                await this.executeSetViewport(step);
+                break;
+            case 'setOrientation':
+                await this.executeSetOrientation(step);
                 break;
             case 'repeat':
             case 'retry':
@@ -531,6 +538,35 @@ class ActionExecutor {
     }
     async executeAddMedia() {
         throw new Error('addMedia is not supported on web');
+    }
+    /** Resize the viewport to sweep responsive breakpoints (web-native drive) */
+    async executeSetViewport(step) {
+        const { width, height } = step;
+        if (width === undefined || height === undefined) {
+            throw new Error("setViewport requires 'width' and 'height'");
+        }
+        await this.page.setViewportSize({ width, height });
+    }
+    /**
+     * Rotate to the given orientation by swapping the viewport width/height.
+     * Already-matching orientation is a no-op; a `viewport: null` context
+     * (headful / --start-maximized) cannot be resized, so it is a no-op with a
+     * warning — dependent asserts should self-gate with `when.responsive`.
+     */
+    async executeSetOrientation(step) {
+        const orientation = step.orientation;
+        if (!orientation) {
+            throw new Error("setOrientation requires 'orientation'");
+        }
+        const viewport = this.page.viewportSize();
+        if (!viewport) {
+            console.warn('[ActionExecutor] setOrientation: no viewport is set (viewport: null context) - skipping (no-op)');
+            return;
+        }
+        if ((0, types_1.deriveOrientation)(viewport) === orientation) {
+            return;
+        }
+        await this.page.setViewportSize({ width: viewport.height, height: viewport.width });
     }
     // Helper functions
     /**

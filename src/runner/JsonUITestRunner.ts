@@ -16,7 +16,12 @@ import {
   TestResult,
   TestSuiteResult,
   WhenCondition,
+  ResponsiveCondition,
+  ResponsiveThresholds,
   platformIncludes,
+  matchesResponsive,
+  resolveViewportSize,
+  unknownConditionKeys,
   deepEquals,
   isAction,
   isAssertion,
@@ -49,10 +54,21 @@ export interface TestRunnerConfig {
   mockServerUrl?: string;
   /** Admin token printed by `jsonui-test mock serve`. Required with mockServerUrl. */
   mockToken?: string;
+  /**
+   * Named-bucket width thresholds (logical px) for `responsive` gating.
+   * Defaults mirror the web renderer's Tailwind breakpoints (md: 768, lg: 1024).
+   * Only thresholds are overridable — and only for projects that also override
+   * the renderer's breakpoints; bucket NAMES are fixed (no new/renamed buckets
+   * via config).
+   */
+  responsive?: Partial<ResponsiveThresholds>;
 }
 
 type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken';
-type ResolvedConfig = Required<Omit<TestRunnerConfig, OptionalConfigKeys>> & Pick<TestRunnerConfig, OptionalConfigKeys>;
+type ResolvedConfig =
+  Required<Omit<TestRunnerConfig, OptionalConfigKeys | 'responsive'>> &
+  Pick<TestRunnerConfig, OptionalConfigKeys> &
+  { responsive: ResponsiveThresholds };
 
 const DEFAULT_CONFIG: ResolvedConfig = {
   defaultTimeout: 5000,
@@ -64,7 +80,8 @@ const DEFAULT_CONFIG: ResolvedConfig = {
   baselineDir: './baselines',
   updateBaselines: false,
   mockServerUrl: undefined,
-  mockToken: undefined
+  mockToken: undefined,
+  responsive: { medium: 768, regular: 1024 }
 };
 
 /**
@@ -80,7 +97,11 @@ export class JsonUITestRunner {
   private variables: Record<string, string> = {};
 
   constructor(page: Page, config: TestRunnerConfig = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      responsive: { ...DEFAULT_CONFIG.responsive, ...config.responsive }
+    };
     this.page = page;
     this.actionExecutor = new ActionExecutor(page, this.config.defaultTimeout, this.variables);
     this.assertionExecutor = new AssertionExecutor(page, this.config.defaultTimeout, {
@@ -123,12 +144,20 @@ export class JsonUITestRunner {
     const results: TestResult[] = [];
     const startTime = Date.now();
 
-    // Check platform compatibility
+    // Check platform compatibility. Emit a skipped row per case (not results: [])
+    // so file-level skips stay visible in the report — "no silent truncation".
     if (!platformIncludes(test.platform, this.config.platform)) {
       this.log('Skipping test - platform mismatch');
       return {
         suiteName: test.metadata.name,
-        results: [],
+        results: test.cases.map(testCase => ({
+          testName: test.metadata.name,
+          caseName: testCase.name,
+          passed: true,
+          skipped: true,
+          skipReason: 'platform' as const,
+          durationMs: 0
+        })),
         totalDurationMs: 0
       };
     }
@@ -215,12 +244,20 @@ export class JsonUITestRunner {
   async runFlowTest(test: FlowTest, _testPath: string = ''): Promise<TestSuiteResult> {
     const startTime = Date.now();
 
-    // Check platform compatibility
+    // Check platform compatibility. Emit a skipped row (not results: []) so the
+    // flow-level skip stays visible in the report — "no silent truncation".
     if (!platformIncludes(test.platform, this.config.platform)) {
       this.log('Skipping flow test - platform mismatch');
       return {
         suiteName: test.metadata.name,
-        results: [],
+        results: [{
+          testName: test.metadata.name,
+          caseName: 'flow',
+          passed: true,
+          skipped: true,
+          skipReason: 'platform',
+          durationMs: 0
+        }],
         totalDurationMs: 0
       };
     }
@@ -302,7 +339,10 @@ export class JsonUITestRunner {
       };
     }
 
-    // Check platform compatibility
+    // Check platform compatibility. Deterministic skip-reason rule: platform is
+    // evaluated BEFORE responsive, so when a case carries both gates and both
+    // are unmet, `skipReason` is 'platform' (the static gate wins over the
+    // viewport-dependent one, keeping reports stable across viewport sizes).
     if (!platformIncludes(testCase.platform, this.config.platform)) {
       this.log(`Skipping case ${testCase.name} - platform mismatch`);
       return {
@@ -310,6 +350,20 @@ export class JsonUITestRunner {
         caseName: testCase.name,
         passed: true,
         skipped: true,
+        skipReason: 'platform',
+        durationMs: 0
+      };
+    }
+
+    // Check responsive compatibility (case-level gate, parallel to platform)
+    if (testCase.responsive !== undefined && !(await this.currentSizeMatches(testCase.responsive))) {
+      this.log(`Skipping case ${testCase.name} - responsive mismatch`);
+      return {
+        testName,
+        caseName: testCase.name,
+        passed: true,
+        skipped: true,
+        skipReason: 'responsive',
         durationMs: 0
       };
     }
@@ -472,10 +526,24 @@ export class JsonUITestRunner {
 
   /**
    * Evaluate a `when` / `while` condition. Multiple keys are ANDed.
+   *
+   * Fail-safe: a condition containing any key outside KNOWN_CONDITION_KEYS
+   * (e.g. written against a newer schema than this driver) is UNMET — the step
+   * skips. Never run-anyway (false-green at the wrong state), never throw.
    */
   private async evaluateCondition(condition: WhenCondition): Promise<boolean> {
+    const unknown = unknownConditionKeys(condition);
+    if (unknown.length > 0) {
+      this.log(`    Condition has unsupported key(s) [${unknown.join(', ')}] - treating as unmet (fail-safe skip)`);
+      return false;
+    }
     if (condition.platform !== undefined) {
       if (!platformIncludes(condition.platform, this.config.platform)) {
+        return false;
+      }
+    }
+    if (condition.responsive !== undefined) {
+      if (!(await this.currentSizeMatches(condition.responsive))) {
         return false;
       }
     }
@@ -501,6 +569,16 @@ export class JsonUITestRunner {
       }
     }
     return true;
+  }
+
+  /**
+   * True when the current viewport size satisfies a `responsive` condition.
+   * Reads the live size on every evaluation so setViewport/setOrientation
+   * changes are picked up immediately.
+   */
+  private async currentSizeMatches(condition: ResponsiveCondition): Promise<boolean> {
+    const size = await resolveViewportSize(this.page);
+    return matchesResponsive(condition, size, this.config.responsive);
   }
 
   /** Instant visibility check (no polling) used by conditions */
@@ -576,6 +654,12 @@ export class JsonUITestRunner {
         continue;
       }
 
+      // Check responsive compatibility (case-level gate, parallel to platform)
+      if (testCase.responsive !== undefined && !(await this.currentSizeMatches(testCase.responsive))) {
+        this.log(`    Skipping case ${testCase.name} - responsive mismatch`);
+        continue;
+      }
+
       this.log(`    Running referenced case: ${testCase.name}`);
       await this.executeSteps(testCase.steps, warnings);
     }
@@ -616,7 +700,10 @@ export class JsonUITestRunner {
       paths: step.paths,
       cropId: step.cropId,
       threshold: step.threshold,
-      mocks: step.mocks
+      mocks: step.mocks,
+      width: step.width,
+      height: step.height,
+      orientation: step.orientation
     };
   }
 
@@ -687,6 +774,16 @@ export class TestRunnerBuilder {
   mockServer(url: string, token: string): this {
     this.config.mockServerUrl = url;
     this.config.mockToken = token;
+    return this;
+  }
+
+  /**
+   * Override named-bucket width thresholds (logical px) for `responsive` gating.
+   * Only for projects that also override the renderer's Tailwind breakpoints —
+   * bucket names themselves are fixed.
+   */
+  responsiveThresholds(thresholds: Partial<ResponsiveThresholds>): this {
+    this.config.responsive = { ...this.config.responsive, ...thresholds };
     return this;
   }
 

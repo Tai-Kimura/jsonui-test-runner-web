@@ -3,7 +3,7 @@
  * Main test runner using Playwright
  */
 import { Page } from 'playwright';
-import { LoadedTest, ScreenTest, FlowTest, TestSuiteResult } from '../models/types';
+import { LoadedTest, ScreenTest, FlowTest, TestSuiteResult, ResponsiveThresholds } from '../models/types';
 import { StateProvider } from './StateProvider';
 /**
  * Configuration for the test runner
@@ -24,6 +24,14 @@ export interface TestRunnerConfig {
     mockServerUrl?: string;
     /** Admin token printed by `jsonui-test mock serve`. Required with mockServerUrl. */
     mockToken?: string;
+    /**
+     * Named-bucket width thresholds (logical px) for `responsive` gating.
+     * Defaults mirror the web renderer's Tailwind breakpoints (md: 768, lg: 1024).
+     * Only thresholds are overridable — and only for projects that also override
+     * the renderer's breakpoints; bucket NAMES are fixed (no new/renamed buckets
+     * via config).
+     */
+    responsive?: Partial<ResponsiveThresholds>;
 }
 /**
  * Main test runner for JsonUI tests
@@ -63,8 +71,18 @@ export declare class JsonUITestRunner {
     private executeRetry;
     /**
      * Evaluate a `when` / `while` condition. Multiple keys are ANDed.
+     *
+     * Fail-safe: a condition containing any key outside KNOWN_CONDITION_KEYS
+     * (e.g. written against a newer schema than this driver) is UNMET — the step
+     * skips. Never run-anyway (false-green at the wrong state), never throw.
      */
     private evaluateCondition;
+    /**
+     * True when the current viewport size satisfies a `responsive` condition.
+     * Reads the live size on every evaluation so setViewport/setOrientation
+     * changes are picked up immediately.
+     */
+    private currentSizeMatches;
     /** Instant visibility check (no polling) used by conditions */
     private isInstantlyVisible;
     private executeFlowSteps;
@@ -90,6 +108,12 @@ export declare class TestRunnerBuilder {
     updateBaselines(enabled: boolean): this;
     /** Point the runner at a running mock server so `mocks` / `setMocks` work. */
     mockServer(url: string, token: string): this;
+    /**
+     * Override named-bucket width thresholds (logical px) for `responsive` gating.
+     * Only for projects that also override the renderer's Tailwind breakpoints —
+     * bucket names themselves are fixed.
+     */
+    responsiveThresholds(thresholds: Partial<ResponsiveThresholds>): this;
     verbose(enabled: boolean): this;
     build(page: Page): JsonUITestRunner;
 }

@@ -6,7 +6,7 @@
  */
 
 import { Page, Locator } from 'playwright';
-import { TestStep } from '../models/types';
+import { TestStep, deriveOrientation } from '../models/types';
 
 export class ActionExecutor {
   private page: Page;
@@ -94,6 +94,12 @@ export class ActionExecutor {
         break;
       case 'addMedia':
         await this.executeAddMedia();
+        break;
+      case 'setViewport':
+        await this.executeSetViewport(step);
+        break;
+      case 'setOrientation':
+        await this.executeSetOrientation(step);
         break;
       case 'repeat':
       case 'retry':
@@ -593,6 +599,39 @@ export class ActionExecutor {
 
   private async executeAddMedia(): Promise<void> {
     throw new Error('addMedia is not supported on web');
+  }
+
+  /** Resize the viewport to sweep responsive breakpoints (web-native drive) */
+  private async executeSetViewport(step: TestStep): Promise<void> {
+    const { width, height } = step;
+    if (width === undefined || height === undefined) {
+      throw new Error("setViewport requires 'width' and 'height'");
+    }
+    await this.page.setViewportSize({ width, height });
+  }
+
+  /**
+   * Rotate to the given orientation by swapping the viewport width/height.
+   * Already-matching orientation is a no-op; a `viewport: null` context
+   * (headful / --start-maximized) cannot be resized, so it is a no-op with a
+   * warning — dependent asserts should self-gate with `when.responsive`.
+   */
+  private async executeSetOrientation(step: TestStep): Promise<void> {
+    const orientation = step.orientation;
+    if (!orientation) {
+      throw new Error("setOrientation requires 'orientation'");
+    }
+    const viewport = this.page.viewportSize();
+    if (!viewport) {
+      console.warn(
+        '[ActionExecutor] setOrientation: no viewport is set (viewport: null context) - skipping (no-op)'
+      );
+      return;
+    }
+    if (deriveOrientation(viewport) === orientation) {
+      return;
+    }
+    await this.page.setViewportSize({ width: viewport.height, height: viewport.width });
   }
 
   // Helper functions

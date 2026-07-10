@@ -73,6 +73,10 @@ class ResultsWriter {
                     if (result.error !== undefined) {
                         entry.error = result.error;
                     }
+                    // skipReason is only meaningful on skipped rows (schema: optional enum)
+                    if (result.skipped && result.skipReason !== undefined) {
+                        entry.skipReason = result.skipReason;
+                    }
                     if (result.warnings !== undefined && result.warnings.length > 0) {
                         entry.warnings = result.warnings;
                     }
