@@ -44,6 +44,9 @@ export class ActionExecutor {
       case 'input':
         await this.executeInput(step, timeout);
         break;
+      case 'typeText':
+        await this.executeTypeText(step);
+        break;
       case 'clear':
         await this.executeClear(step, timeout);
         break;
@@ -163,6 +166,20 @@ export class ActionExecutor {
       // Try filling directly if the element itself is an input
       await element.fill(value);
     }
+  }
+
+  /**
+   * Type into whatever currently holds keyboard focus — no element id.
+   * For fields that are focused but not directly targetable (e.g. an invisible
+   * code-entry input behind visible slots). Focus is established app-side
+   * (auto-focus or a prior tap); keyboard events route to document.activeElement.
+   */
+  private async executeTypeText(step: TestStep): Promise<void> {
+    const value = step.value;
+    if (value === undefined) {
+      throw new Error("typeText requires 'value'");
+    }
+    await this.page.keyboard.type(value);
   }
 
   private async executeClear(step: TestStep, timeout: number): Promise<void> {

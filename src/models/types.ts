@@ -232,6 +232,7 @@ export type ActionType =
   | 'doubleTap'
   | 'longPress'
   | 'input'
+  | 'typeText'
   | 'clear'
   | 'scroll'
   | 'scrollUntilVisible'

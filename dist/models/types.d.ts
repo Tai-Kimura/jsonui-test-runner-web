@@ -199,7 +199,7 @@ export interface TestStep {
     /** Scenario map for the setMocks action (operationId -> scenario) */
     mocks?: MockScenarioMap;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks';
 export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;

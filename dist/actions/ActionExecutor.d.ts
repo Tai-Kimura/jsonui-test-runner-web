@@ -20,6 +20,13 @@ export declare class ActionExecutor {
     private executeDoubleTap;
     private executeLongPress;
     private executeInput;
+    /**
+     * Type into whatever currently holds keyboard focus — no element id.
+     * For fields that are focused but not directly targetable (e.g. an invisible
+     * code-entry input behind visible slots). Focus is established app-side
+     * (auto-focus or a prior tap); keyboard events route to document.activeElement.
+     */
+    private executeTypeText;
     private executeClear;
     private executeScroll;
     private executeSwipe;
