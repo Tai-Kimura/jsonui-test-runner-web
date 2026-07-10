@@ -413,6 +413,7 @@ export type ActionType =
   | 'waitForAny'
   | 'wait'
   | 'back'
+  | 'hideKeyboard'
   | 'screenshot'
   | 'alertTap'
   | 'selectOption'

@@ -71,6 +71,9 @@ export class ActionExecutor {
       case 'back':
         await this.executeBack();
         break;
+      case 'hideKeyboard':
+        await this.executeHideKeyboard();
+        break;
       case 'screenshot':
         await this.executeScreenshot(step);
         break;
@@ -338,6 +341,20 @@ export class ActionExecutor {
 
   private async executeBack(): Promise<void> {
     await this.page.goBack();
+  }
+
+  /**
+   * Dismiss the soft keyboard by blurring the focused element. Under mobile
+   * emulation this closes the on-screen keyboard; on desktop it is a
+   * harmless blur (cross-platform parity with the ios/android drivers).
+   */
+  private async executeHideKeyboard(): Promise<void> {
+    await this.page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && typeof el.blur === 'function') {
+        el.blur();
+      }
+    });
   }
 
   private async executeScreenshot(step: TestStep): Promise<void> {

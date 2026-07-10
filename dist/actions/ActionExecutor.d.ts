@@ -34,6 +34,12 @@ export declare class ActionExecutor {
     private executeWaitForAny;
     private executeWait;
     private executeBack;
+    /**
+     * Dismiss the soft keyboard by blurring the focused element. Under mobile
+     * emulation this closes the on-screen keyboard; on desktop it is a
+     * harmless blur (cross-platform parity with the ios/android drivers).
+     */
+    private executeHideKeyboard;
     private executeScreenshot;
     private executeAlertTap;
     private executeSelectOption;

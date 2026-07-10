@@ -295,7 +295,7 @@ export interface TestStep {
     /** Target orientation for setOrientation */
     orientation?: ResponsiveOrientation;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation';
 export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
