@@ -593,6 +593,16 @@ class ActionExecutor {
      * Calculates the approximate position of the target text and clicks there
      */
     async tapTextPortion(element, targetText) {
+        // Preferred: a real DOM descendant carrying exactly the range text —
+        // ReactJsonUI renders each clickable partialAttributes range as its own
+        // <span onClick>. Clicking its true rect is exact for centered/matchParent
+        // and wrapped labels where the proportional estimate below misses
+        // (test-partialattributes-subrange-tap-misses-on-centered-matchparent-label).
+        const rangeTarget = element.getByText(targetText, { exact: true }).first();
+        if ((await rangeTarget.count()) > 0) {
+            await rangeTarget.click();
+            return;
+        }
         const fullText = await element.textContent();
         if (!fullText) {
             throw new Error('Element has no text content');
