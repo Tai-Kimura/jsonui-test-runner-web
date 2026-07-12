@@ -187,6 +187,31 @@ class JsonUITestRunner {
         const results = [];
         const warnings = [];
         let flowError = null;
+        // Apply the file-level mock scenario set BEFORE the flow fetches, then reload
+        // so startup runs under the selected scenarios. Parity with runScreenTest
+        // (§8.1); a failure here fails the flow rather than silently running default.
+        if (test.mocks) {
+            try {
+                this.log('Applying flow mock scenarios and reloading...');
+                await this.requireMockClient('mocks').scenarioSet(test.mocks);
+                await this.page.reload();
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const result = {
+                    suiteName: test.metadata.name,
+                    results: [{
+                            testName: test.metadata.name,
+                            caseName: 'flow',
+                            passed: false,
+                            error: message,
+                            durationMs: Date.now() - startTime
+                        }],
+                    totalDurationMs: Date.now() - startTime
+                };
+                return result;
+            }
+        }
         try {
             // Run setup
             if (test.setup) {

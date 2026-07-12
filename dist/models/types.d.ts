@@ -52,6 +52,12 @@ export interface FlowTest {
     initialState?: FlowInitialState;
     /** App launch configuration (apply via applyLaunchConfig before navigation) */
     launch?: LaunchConfig;
+    /**
+     * File-level mock scenarios (operationId -> scenario) applied before the
+     * first navigation, so startup fetches run under the selected scenarios.
+     * Parity with ScreenTest.mocks; step-level setMocks handles mid-flow switches.
+     */
+    mocks?: Record<string, string>;
     setup?: FlowTestStep[];
     teardown?: FlowTestStep[];
     steps: FlowTestStep[];
