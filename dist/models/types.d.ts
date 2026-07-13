@@ -114,6 +114,8 @@ export interface FlowTestStep {
     longitude?: number;
     /** Media file paths for addMedia */
     paths?: string[];
+    /** Positional arguments for emitHook (passed to the registered page hook) */
+    hookArgs?: unknown[];
     /** Crop element id for screenshot assertion */
     cropId?: string;
     /** Similarity threshold (0-100) for screenshot assertion */
@@ -288,6 +290,8 @@ export interface TestStep {
     longitude?: number;
     /** Media file paths for addMedia */
     paths?: string[];
+    /** Positional arguments for emitHook (passed to the registered page hook) */
+    hookArgs?: unknown[];
     /** Crop element id for screenshot assertion */
     cropId?: string;
     /** Similarity threshold (0-100) for screenshot assertion */
@@ -301,8 +305,8 @@ export interface TestStep {
     /** Target orientation for setOrientation */
     orientation?: ResponsiveOrientation;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation';
-export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation' | 'emitHook';
+export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot' | 'openedUrl';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
 /** Why a skipped result was skipped; only set for gate-caused skips (results.schema.json skipReason) */

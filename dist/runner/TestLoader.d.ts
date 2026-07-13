@@ -20,6 +20,11 @@ export declare class TestLoader {
      */
     static setBasePath(filePath: string): void;
     /**
+     * Directory of the currently loaded test file, for resolving step-level
+     * relative paths (addMedia fixtures etc.). Null before any load.
+     */
+    static getBasePath(): string | null;
+    /**
      * Load a test from a file path
      */
     static loadFromFile(filePath: string): LoadedTest;

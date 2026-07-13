@@ -36,6 +36,14 @@ export class TestLoader {
   }
 
   /**
+   * Directory of the currently loaded test file, for resolving step-level
+   * relative paths (addMedia fixtures etc.). Null before any load.
+   */
+  static getBasePath(): string | null {
+    return this.basePath;
+  }
+
+  /**
    * Load a test from a file path
    */
   static loadFromFile(filePath: string): LoadedTest {

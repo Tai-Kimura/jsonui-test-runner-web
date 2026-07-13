@@ -40,6 +40,13 @@ export declare class AssertionExecutor {
     private assertText;
     private assertCount;
     private assertState;
+    /**
+     * Assert against the most recent window.open call recorded by the runner's
+     * spy (installed on every document). Auto-waits like element assertions so
+     * an open triggered by an async handler still lands within the timeout.
+     * Web-only — gate with when.platform in cross-platform tests.
+     */
+    private assertOpenedUrl;
     private assertScreenshot;
     private requireId;
     /**

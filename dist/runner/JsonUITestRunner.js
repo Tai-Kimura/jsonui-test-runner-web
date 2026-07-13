@@ -26,6 +26,28 @@ const DEFAULT_CONFIG = {
     responsive: { medium: 768, regular: 1024 }
 };
 /**
+ * Injected into every document: records window.open calls so the `openedUrl`
+ * assert can verify new-tab affordances without a real popup dependency.
+ * Idempotent — safe to install via both addInitScript and evaluate.
+ */
+function installWindowOpenSpy() {
+    const w = window;
+    if (w.__jsonuiOpenSpyInstalled)
+        return;
+    w.__jsonuiOpenSpyInstalled = true;
+    w.__jsonuiOpenedUrls = [];
+    const original = w.open.bind(window);
+    w.open = ((url, target, features) => {
+        w.__jsonuiOpenedUrls.push(String(url ?? ''));
+        try {
+            return original(url, target, features);
+        }
+        catch {
+            return null;
+        }
+    });
+}
+/**
  * Main test runner for JsonUI tests
  */
 class JsonUITestRunner {
@@ -47,6 +69,16 @@ class JsonUITestRunner {
         this.mockClient = (this.config.mockServerUrl && this.config.mockToken)
             ? new MockClient_1.MockClient(page.request, this.config.mockServerUrl, this.config.mockToken)
             : null;
+        // Spy on window.open in every future document (openedUrl assert).
+        void page.addInitScript(installWindowOpenSpy).catch(() => { });
+    }
+    /**
+     * Make sure the CURRENT document has the window.open spy too — the runner
+     * may be constructed after the app has already navigated, in which case
+     * addInitScript alone would only cover the next navigation.
+     */
+    async ensureWindowOpenSpy() {
+        await this.page.evaluate(installWindowOpenSpy).catch(() => { });
     }
     /** Return the configured mock client or throw a clear setup error. */
     requireMockClient(feature) {
@@ -73,6 +105,7 @@ class JsonUITestRunner {
     async runScreenTest(test, _testPath = '') {
         const results = [];
         const startTime = Date.now();
+        await this.ensureWindowOpenSpy();
         // Check platform compatibility. Emit a skipped row per case (not results: [])
         // so file-level skips stay visible in the report — "no silent truncation".
         if (!(0, types_1.platformIncludes)(test.platform, this.config.platform)) {
@@ -167,6 +200,7 @@ class JsonUITestRunner {
      */
     async runFlowTest(test, _testPath = '') {
         const startTime = Date.now();
+        await this.ensureWindowOpenSpy();
         // Check platform compatibility. Emit a skipped row (not results: []) so the
         // flow-level skip stays visible in the report — "no silent truncation".
         if (!(0, types_1.platformIncludes)(test.platform, this.config.platform)) {
@@ -611,6 +645,7 @@ class JsonUITestRunner {
             latitude: step.latitude,
             longitude: step.longitude,
             paths: step.paths,
+            hookArgs: step.hookArgs,
             cropId: step.cropId,
             threshold: step.threshold,
             mocks: step.mocks,

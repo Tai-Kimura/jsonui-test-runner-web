@@ -129,6 +129,8 @@ export interface FlowTestStep {
   longitude?: number;
   /** Media file paths for addMedia */
   paths?: string[];
+  /** Positional arguments for emitHook (passed to the registered page hook) */
+  hookArgs?: unknown[];
   /** Crop element id for screenshot assertion */
   cropId?: string;
   /** Similarity threshold (0-100) for screenshot assertion */
@@ -389,6 +391,8 @@ export interface TestStep {
   longitude?: number;
   /** Media file paths for addMedia */
   paths?: string[];
+  /** Positional arguments for emitHook (passed to the registered page hook) */
+  hookArgs?: unknown[];
   /** Crop element id for screenshot assertion */
   cropId?: string;
   /** Similarity threshold (0-100) for screenshot assertion */
@@ -432,7 +436,8 @@ export type ActionType =
   | 'addMedia'
   | 'setMocks'
   | 'setViewport'
-  | 'setOrientation';
+  | 'setOrientation'
+  | 'emitHook';
 
 export type AssertionType =
   | 'visible'
@@ -442,7 +447,8 @@ export type AssertionType =
   | 'text'
   | 'count'
   | 'state'
-  | 'screenshot';
+  | 'screenshot'
+  | 'openedUrl';
 
 // MARK: - Platform Target
 

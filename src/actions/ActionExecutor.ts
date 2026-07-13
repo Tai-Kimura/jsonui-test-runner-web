@@ -5,8 +5,11 @@
  * Uses id attribute for element matching (ReactJsonUI exposes id as HTML id attribute)
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { Page, Locator } from 'playwright';
 import { TestStep, deriveOrientation } from '../models/types';
+import { TestLoader } from '../runner/TestLoader';
 
 export class ActionExecutor {
   private page: Page;
@@ -96,7 +99,10 @@ export class ActionExecutor {
         await this.executeSetLocation(step);
         break;
       case 'addMedia':
-        await this.executeAddMedia();
+        await this.executeAddMedia(step);
+        break;
+      case 'emitHook':
+        await this.executeEmitHook(step);
         break;
       case 'setViewport':
         await this.executeSetViewport(step);
@@ -614,8 +620,72 @@ export class ActionExecutor {
     await context.setGeolocation({ latitude, longitude });
   }
 
-  private async executeAddMedia(): Promise<void> {
-    throw new Error('addMedia is not supported on web');
+  /**
+   * Set files on a file input. Paths resolve relative to the test file's
+   * directory (TestLoader base path); absolute paths pass through. With an
+   * `id`, targets that element (the input itself, or a file input inside
+   * it); without one, the page's first input[type=file]. setInputFiles
+   * works on hidden inputs (display:none / opacity:0), so the native picker
+   * never needs to open.
+   */
+  private async executeAddMedia(step: TestStep): Promise<void> {
+    const paths = step.paths;
+    if (!paths || paths.length === 0) {
+      throw new Error("addMedia requires non-empty 'paths'");
+    }
+
+    const base = TestLoader.getBasePath() ?? process.cwd();
+    const resolved = paths.map((p) => (path.isAbsolute(p) ? p : path.resolve(base, p)));
+    for (const p of resolved) {
+      if (!fs.existsSync(p)) {
+        throw new Error(`addMedia: file not found: ${p}`);
+      }
+    }
+
+    let input: Locator;
+    if (step.id) {
+      const target = this.getLocator(step.id).first();
+      await target.waitFor({ state: 'attached', timeout: step.timeout ?? this.defaultTimeout });
+      const isFileInput = await target.evaluate(
+        (node) => node instanceof HTMLInputElement && node.type === 'file'
+      );
+      input = isFileInput ? target : target.locator('input[type="file"]').first();
+    } else {
+      input = this.page.locator('input[type="file"]').first();
+    }
+
+    await input.setInputFiles(resolved);
+  }
+
+  /**
+   * Call a browser-side hook the app registered on window.__jsonuiTestHooks
+   * (e.g. an RTDB mock emitter). A limited, declarative alternative to a raw
+   * script step: the runner can only invoke hooks the app chose to expose.
+   * Web-only — mobile drivers treat emitHook as a no-op with a warning.
+   */
+  private async executeEmitHook(step: TestStep): Promise<void> {
+    const name = step.name;
+    if (!name) {
+      throw new Error("emitHook requires 'name'");
+    }
+    const hookArgs = step.hookArgs ?? [];
+
+    await this.page.evaluate(
+      ({ name, hookArgs }) => {
+        const hooks = (window as unknown as {
+          __jsonuiTestHooks?: Record<string, (...args: unknown[]) => unknown>;
+        }).__jsonuiTestHooks;
+        const fn = hooks?.[name];
+        if (typeof fn !== 'function') {
+          const registered = hooks ? Object.keys(hooks).join(', ') || '(none)' : '(none)';
+          throw new Error(
+            `emitHook: hook '${name}' is not registered on window.__jsonuiTestHooks (registered: ${registered})`
+          );
+        }
+        return fn(...hookArgs);
+      },
+      { name, hookArgs }
+    );
   }
 
   /** Resize the viewport to sweep responsive breakpoints (web-native drive) */

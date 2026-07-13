@@ -82,6 +82,9 @@ export class AssertionExecutor {
       case 'screenshot':
         await this.assertScreenshot(step);
         break;
+      case 'openedUrl':
+        await this.assertOpenedUrl(step, timeout);
+        break;
       default:
         throw new Error(`Unknown assertion: ${assertion}`);
     }
@@ -219,6 +222,35 @@ export class AssertionExecutor {
       return deepEquals(actual, step.equals)
         ? null
         : `State '${statePath}' should be ${JSON.stringify(step.equals)} but got ${JSON.stringify(actual)}`;
+    });
+  }
+
+  /**
+   * Assert against the most recent window.open call recorded by the runner's
+   * spy (installed on every document). Auto-waits like element assertions so
+   * an open triggered by an async handler still lands within the timeout.
+   * Web-only — gate with when.platform in cross-platform tests.
+   */
+  private async assertOpenedUrl(step: TestStep, timeout: number): Promise<void> {
+    if (step.equals === undefined && step.contains === undefined) {
+      throw new Error("openedUrl assertion requires 'equals' or 'contains'");
+    }
+
+    await this.pollUntil(timeout, async () => {
+      const urls = await this.page.evaluate(
+        () => (window as unknown as { __jsonuiOpenedUrls?: string[] }).__jsonuiOpenedUrls ?? []
+      );
+      const last = urls[urls.length - 1];
+      if (last === undefined) {
+        return 'no window.open call recorded';
+      }
+      if (step.equals !== undefined && last !== String(step.equals)) {
+        return `last opened url '${last}' does not equal '${step.equals}'`;
+      }
+      if (step.contains !== undefined && !last.includes(step.contains)) {
+        return `last opened url '${last}' does not contain '${step.contains}'`;
+      }
+      return null;
     });
   }
 

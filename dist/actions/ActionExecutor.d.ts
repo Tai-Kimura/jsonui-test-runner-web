@@ -53,7 +53,22 @@ export declare class ActionExecutor {
     private scrollOneStep;
     private executeReadText;
     private executeSetLocation;
+    /**
+     * Set files on a file input. Paths resolve relative to the test file's
+     * directory (TestLoader base path); absolute paths pass through. With an
+     * `id`, targets that element (the input itself, or a file input inside
+     * it); without one, the page's first input[type=file]. setInputFiles
+     * works on hidden inputs (display:none / opacity:0), so the native picker
+     * never needs to open.
+     */
     private executeAddMedia;
+    /**
+     * Call a browser-side hook the app registered on window.__jsonuiTestHooks
+     * (e.g. an RTDB mock emitter). A limited, declarative alternative to a raw
+     * script step: the runner can only invoke hooks the app chose to expose.
+     * Web-only — mobile drivers treat emitHook as a no-op with a warning.
+     */
+    private executeEmitHook;
     /** Resize the viewport to sweep responsive breakpoints (web-native drive) */
     private executeSetViewport;
     /**

@@ -45,6 +45,12 @@ export declare class JsonUITestRunner {
     /** Runtime variables written by readText, shared with the action executor */
     private variables;
     constructor(page: Page, config?: TestRunnerConfig);
+    /**
+     * Make sure the CURRENT document has the window.open spy too — the runner
+     * may be constructed after the app has already navigated, in which case
+     * addInitScript alone would only cover the next navigation.
+     */
+    private ensureWindowOpenSpy;
     /** Return the configured mock client or throw a clear setup error. */
     private requireMockClient;
     /**

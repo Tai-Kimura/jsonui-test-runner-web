@@ -5,9 +5,45 @@
  *
  * Uses id attribute for element matching (ReactJsonUI exposes id as HTML id attribute)
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ActionExecutor = void 0;
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 const types_1 = require("../models/types");
+const TestLoader_1 = require("../runner/TestLoader");
 class ActionExecutor {
     constructor(page, defaultTimeout = 5000, variables = {}) {
         this.page = page;
@@ -88,7 +124,10 @@ class ActionExecutor {
                 await this.executeSetLocation(step);
                 break;
             case 'addMedia':
-                await this.executeAddMedia();
+                await this.executeAddMedia(step);
+                break;
+            case 'emitHook':
+                await this.executeEmitHook(step);
                 break;
             case 'setViewport':
                 await this.executeSetViewport(step);
@@ -552,8 +591,59 @@ class ActionExecutor {
         await context.grantPermissions(['geolocation']);
         await context.setGeolocation({ latitude, longitude });
     }
-    async executeAddMedia() {
-        throw new Error('addMedia is not supported on web');
+    /**
+     * Set files on a file input. Paths resolve relative to the test file's
+     * directory (TestLoader base path); absolute paths pass through. With an
+     * `id`, targets that element (the input itself, or a file input inside
+     * it); without one, the page's first input[type=file]. setInputFiles
+     * works on hidden inputs (display:none / opacity:0), so the native picker
+     * never needs to open.
+     */
+    async executeAddMedia(step) {
+        const paths = step.paths;
+        if (!paths || paths.length === 0) {
+            throw new Error("addMedia requires non-empty 'paths'");
+        }
+        const base = TestLoader_1.TestLoader.getBasePath() ?? process.cwd();
+        const resolved = paths.map((p) => (path.isAbsolute(p) ? p : path.resolve(base, p)));
+        for (const p of resolved) {
+            if (!fs.existsSync(p)) {
+                throw new Error(`addMedia: file not found: ${p}`);
+            }
+        }
+        let input;
+        if (step.id) {
+            const target = this.getLocator(step.id).first();
+            await target.waitFor({ state: 'attached', timeout: step.timeout ?? this.defaultTimeout });
+            const isFileInput = await target.evaluate((node) => node instanceof HTMLInputElement && node.type === 'file');
+            input = isFileInput ? target : target.locator('input[type="file"]').first();
+        }
+        else {
+            input = this.page.locator('input[type="file"]').first();
+        }
+        await input.setInputFiles(resolved);
+    }
+    /**
+     * Call a browser-side hook the app registered on window.__jsonuiTestHooks
+     * (e.g. an RTDB mock emitter). A limited, declarative alternative to a raw
+     * script step: the runner can only invoke hooks the app chose to expose.
+     * Web-only — mobile drivers treat emitHook as a no-op with a warning.
+     */
+    async executeEmitHook(step) {
+        const name = step.name;
+        if (!name) {
+            throw new Error("emitHook requires 'name'");
+        }
+        const hookArgs = step.hookArgs ?? [];
+        await this.page.evaluate(({ name, hookArgs }) => {
+            const hooks = window.__jsonuiTestHooks;
+            const fn = hooks?.[name];
+            if (typeof fn !== 'function') {
+                const registered = hooks ? Object.keys(hooks).join(', ') || '(none)' : '(none)';
+                throw new Error(`emitHook: hook '${name}' is not registered on window.__jsonuiTestHooks (registered: ${registered})`);
+            }
+            return fn(...hookArgs);
+        }, { name, hookArgs });
     }
     /** Resize the viewport to sweep responsive breakpoints (web-native drive) */
     async executeSetViewport(step) {
