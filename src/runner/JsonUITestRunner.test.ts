@@ -14,7 +14,9 @@ function makeFakePage(viewport: { width: number; height: number } | null): Page 
     evaluate: async () => ({ width: 0, height: 0 }),
     waitForLoadState: async () => undefined,
     waitForTimeout: async () => undefined,
-    screenshot: async () => Buffer.from('')
+    screenshot: async () => Buffer.from(''),
+    // window.open spy installation (openedUrl assert) — added in 1.5.0
+    addInitScript: async () => undefined
   };
   return fake as unknown as Page;
 }

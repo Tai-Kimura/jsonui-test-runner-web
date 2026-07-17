@@ -363,8 +363,20 @@ export class ActionExecutor {
     });
   }
 
+  /**
+   * Sink for `screenshot` action captures. The runner wires this so the
+   * capture lands in config.screenshotDir with test/case identity in the
+   * name (collected by `jsonui-test artifacts pull`); the bare CWD write
+   * below is only the fallback for executors used without a runner.
+   */
+  screenshotHandler?: (name: string) => Promise<void>;
+
   private async executeScreenshot(step: TestStep): Promise<void> {
     const name = step.name ?? `screenshot_${Date.now()}`;
+    if (this.screenshotHandler) {
+      await this.screenshotHandler(name);
+      return;
+    }
     await this.page.screenshot({ path: `${name}.png` });
   }
 

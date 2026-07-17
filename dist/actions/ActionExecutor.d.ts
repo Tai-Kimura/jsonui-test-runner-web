@@ -40,6 +40,13 @@ export declare class ActionExecutor {
      * harmless blur (cross-platform parity with the ios/android drivers).
      */
     private executeHideKeyboard;
+    /**
+     * Sink for `screenshot` action captures. The runner wires this so the
+     * capture lands in config.screenshotDir with test/case identity in the
+     * name (collected by `jsonui-test artifacts pull`); the bare CWD write
+     * below is only the fallback for executors used without a runner.
+     */
+    screenshotHandler?: (name: string) => Promise<void>;
     private executeScreenshot;
     private executeAlertTap;
     private executeSelectOption;

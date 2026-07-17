@@ -54,6 +54,14 @@ class JsonUITestRunner {
     constructor(page, config = {}) {
         /** Runtime variables written by readText, shared with the action executor */
         this.variables = {};
+        /**
+         * Identity of the test file / case currently executing — embedded into
+         * `screenshot` action filenames (parity with failure_<test>_<case> and the
+         * iOS/Android drivers) so `jsonui-test artifacts pull` output is
+         * self-describing.
+         */
+        this.currentTestName = '';
+        this.currentCaseName = '';
         this.config = {
             ...DEFAULT_CONFIG,
             ...config,
@@ -61,6 +69,12 @@ class JsonUITestRunner {
         };
         this.page = page;
         this.actionExecutor = new ActionExecutor_1.ActionExecutor(page, this.config.defaultTimeout, this.variables);
+        // Route `screenshot` action captures into screenshotDir with identity in
+        // the name (previously they were written to the CWD, invisible to
+        // `jsonui-test artifacts pull`).
+        this.actionExecutor.screenshotHandler = async (name) => {
+            await this.takeScreenshot(`screenshot_${this.currentTestName}_${this.currentCaseName}_${name}`);
+        };
         this.assertionExecutor = new AssertionExecutor_1.AssertionExecutor(page, this.config.defaultTimeout, {
             stateProvider: this.config.stateProvider,
             baselineDir: this.config.baselineDir,
@@ -123,6 +137,10 @@ class JsonUITestRunner {
                 totalDurationMs: 0
             };
         }
+        // Artifact identity for this file (setup/teardown captures carry the
+        // phase name until runTestCase overwrites the case name).
+        this.currentTestName = test.metadata.name;
+        this.currentCaseName = 'setup';
         // Apply the file-level mock scenario set BEFORE the screen fetches, then reload
         // so the screen re-renders against the selected scenarios. (Scenario switching is
         // per-file for screen tests; there is no per-case re-open — see plan §8.1.)
@@ -165,6 +183,7 @@ class JsonUITestRunner {
         // Run teardown (guaranteed). A teardown failure is recorded as an extra failed result.
         if (test.teardown) {
             this.log('Running teardown...');
+            this.currentCaseName = 'teardown';
             try {
                 await this.executeSteps(test.teardown, []);
             }
@@ -221,6 +240,9 @@ class JsonUITestRunner {
         const results = [];
         const warnings = [];
         let flowError = null;
+        // A flow acts as a single case for artifact identity purposes.
+        this.currentTestName = test.metadata.name;
+        this.currentCaseName = 'flow';
         // Apply the file-level mock scenario set BEFORE the flow fetches, then reload
         // so startup runs under the selected scenarios. Parity with runScreenTest
         // (§8.1); a failure here fails the flow rather than silently running default.
@@ -303,6 +325,8 @@ class JsonUITestRunner {
     }
     async runTestCase(testName, testCase) {
         const startTime = Date.now();
+        this.currentTestName = testName;
+        this.currentCaseName = testCase.name;
         // Check if skipped
         if (testCase.skip) {
             this.log(`Skipping case: ${testCase.name}`);

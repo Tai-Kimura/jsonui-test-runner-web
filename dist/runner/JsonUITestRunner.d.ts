@@ -44,6 +44,14 @@ export declare class JsonUITestRunner {
     private mockClient;
     /** Runtime variables written by readText, shared with the action executor */
     private variables;
+    /**
+     * Identity of the test file / case currently executing — embedded into
+     * `screenshot` action filenames (parity with failure_<test>_<case> and the
+     * iOS/Android drivers) so `jsonui-test artifacts pull` output is
+     * self-describing.
+     */
+    private currentTestName;
+    private currentCaseName;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
      * Make sure the CURRENT document has the window.open spy too — the runner

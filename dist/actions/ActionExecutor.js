@@ -358,6 +358,10 @@ class ActionExecutor {
     }
     async executeScreenshot(step) {
         const name = step.name ?? `screenshot_${Date.now()}`;
+        if (this.screenshotHandler) {
+            await this.screenshotHandler(name);
+            return;
+        }
         await this.page.screenshot({ path: `${name}.png` });
     }
     async executeAlertTap(step, timeout) {
