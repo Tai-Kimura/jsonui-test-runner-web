@@ -526,34 +526,57 @@ export class ActionExecutor {
       return;
     }
 
-    const startTime = Date.now();
-    let previousMarker: string | null = null;
-    let unchangedCount = 0;
+    // `direction` is the FIRST direction to search, not a constraint: when the
+    // primary sweep reaches the end of content without a hit, the search
+    // continues in the OPPOSITE direction to the other end. The target can
+    // legitimately sit on the far side of the starting offset (measured on a
+    // tablet 2-column page: a tall section left partially visible at the
+    // viewport top made an "scroll up until visible" reset step a correct
+    // no-op, and a down-only search then ran to the bottom while the target
+    // sat just above the viewport).
+    const searchLeg = async (
+      legDirection: 'up' | 'down' | 'left' | 'right',
+      deadline: number
+    ): Promise<boolean> => {
+      let previousMarker: string | null = null;
+      let unchangedCount = 0;
 
-    while (Date.now() - startTime < timeout) {
-      const marker = await this.scrollOneStep(step.container, direction);
+      while (Date.now() < deadline) {
+        const marker = await this.scrollOneStep(step.container, legDirection);
 
-      if (await isTargetVisible()) {
-        return;
-      }
-
-      // End-reached detection: two consecutive scrolls with no position/content change
-      if (marker !== null && marker === previousMarker) {
-        unchangedCount += 1;
-        if (unchangedCount >= 1) {
-          throw new Error(
-            `Element '${id}' not found after scrolling to the end of ${step.container ? `'${step.container}'` : 'the page'}`
-          );
+        if (await isTargetVisible()) {
+          return true;
         }
-      } else {
-        unchangedCount = 0;
+
+        // End-reached detection: two consecutive scrolls with no position/content change
+        if (marker !== null && marker === previousMarker) {
+          unchangedCount += 1;
+          if (unchangedCount >= 1) {
+            return false;
+          }
+        } else {
+          unchangedCount = 0;
+        }
+        previousMarker = marker;
+
+        await this.page.waitForTimeout(150);
       }
-      previousMarker = marker;
+      return isTargetVisible();
+    };
 
-      await this.page.waitForTimeout(150);
+    if (await searchLeg(direction, Date.now() + timeout)) {
+      return;
     }
-
-    throw new Error(`Element '${id}' did not become visible within ${timeout}ms of scrolling`);
+    // Reverse leg: grant it a real budget even when the primary leg burned the
+    // step timeout (bounded: at most one extra half-timeout).
+    const reverseMap = { down: 'up', up: 'down', left: 'right', right: 'left' } as const;
+    const reverse = reverseMap[direction] ?? 'up';
+    if (await searchLeg(reverse, Date.now() + Math.max(timeout / 2, 6000))) {
+      return;
+    }
+    throw new Error(
+      `Element '${id}' not found after scrolling to both ends of ${step.container ? `'${step.container}'` : 'the page'}`
+    );
   }
 
   /**
