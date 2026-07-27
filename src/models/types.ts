@@ -448,7 +448,8 @@ export type AssertionType =
   | 'count'
   | 'state'
   | 'screenshot'
-  | 'openedUrl';
+  | 'openedUrl'
+  | 'screen';
 
 // MARK: - Platform Target
 

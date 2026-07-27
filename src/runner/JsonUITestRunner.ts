@@ -40,6 +40,20 @@ const REPEAT_WHILE_CAP = 100;
  */
 export interface TestRunnerConfig {
   defaultTimeout?: number;
+  /**
+   * Verify the screen marker automatically whenever a flow's inline step
+   * moves to a different `screen`, without the test spelling an assertion.
+   * Requires the app to be built with generated code new enough to emit
+   * markers, so it stays opt-in until a project has rebuilt; the canonical
+   * end state is on-by-default.
+   */
+  verifyScreenTransitions?: boolean;
+  /**
+   * Timeout for those implicit verifications. Deliberately larger than
+   * defaultTimeout: real cross-screen waits already use 15-20s after a cold
+   * start.
+   */
+  screenTransitionTimeout?: number;
   screenshotOnFailure?: boolean;
   screenshotDir?: string;
   platform?: string;
@@ -72,6 +86,8 @@ type ResolvedConfig =
 
 const DEFAULT_CONFIG: ResolvedConfig = {
   defaultTimeout: 5000,
+  verifyScreenTransitions: false,
+  screenTransitionTimeout: 10000,
   screenshotOnFailure: true,
   screenshotDir: './screenshots',
   platform: 'web',
@@ -127,6 +143,11 @@ export class JsonUITestRunner {
    * self-describing.
    */
   private currentTestName = '';
+  /**
+   * The screen the previously executed inline step ran on; undefined means
+   * "unknown", which forces the next inline step to be verified.
+   */
+  private trackedScreen: string | undefined;
   private currentCaseName = '';
 
   constructor(page: Page, config: TestRunnerConfig = {}) {
@@ -696,6 +717,25 @@ export class JsonUITestRunner {
     }
   }
 
+  /**
+   * Implicit screen verification (canon: implicitVerification). Runs BEFORE
+   * the step, because the step is meant to run ON that screen.
+   */
+  private async verifyScreenTransitionIfNeeded(step: FlowTestStep): Promise<void> {
+    if (!this.config.verifyScreenTransitions) return;
+    const screen = step.screen;
+    if (!screen) return;
+    // Same screen as the last executed step: nothing has changed.
+    if (screen === this.trackedScreen) return;
+
+    await this.assertionExecutor.execute({
+      assert: 'screen',
+      name: screen,
+      timeout: this.config.screenTransitionTimeout,
+    } as TestStep);
+    this.trackedScreen = screen;
+  }
+
   private async executeFlowStep(step: FlowTestStep, warnings: string[]): Promise<void> {
     // Evaluate step-level `when` for file/block/inline steps
     if (step.when && !(await this.evaluateCondition(step.when))) {
@@ -705,6 +745,10 @@ export class JsonUITestRunner {
 
     // Handle file reference steps
     if (isFileReference(step)) {
+      // A file reference carries no screen of its own, and the case it runs
+      // may end anywhere — reset to unknown so the next inline step is
+      // verified rather than trusted.
+      this.trackedScreen = undefined;
       await this.executeFileReferenceStep(step, warnings);
       return;
     }
@@ -716,6 +760,7 @@ export class JsonUITestRunner {
     }
 
     // Handle inline steps - convert FlowTestStep to TestStep and execute
+    await this.verifyScreenTransitionIfNeeded(step);
     await this.executeStepGuarded(this.toTestStep(step), warnings);
   }
 

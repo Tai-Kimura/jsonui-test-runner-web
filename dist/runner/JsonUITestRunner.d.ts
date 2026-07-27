@@ -10,6 +10,20 @@ import { StateProvider } from './StateProvider';
  */
 export interface TestRunnerConfig {
     defaultTimeout?: number;
+    /**
+     * Verify the screen marker automatically whenever a flow's inline step
+     * moves to a different `screen`, without the test spelling an assertion.
+     * Requires the app to be built with generated code new enough to emit
+     * markers, so it stays opt-in until a project has rebuilt; the canonical
+     * end state is on-by-default.
+     */
+    verifyScreenTransitions?: boolean;
+    /**
+     * Timeout for those implicit verifications. Deliberately larger than
+     * defaultTimeout: real cross-screen waits already use 15-20s after a cold
+     * start.
+     */
+    screenTransitionTimeout?: number;
     screenshotOnFailure?: boolean;
     screenshotDir?: string;
     platform?: string;
@@ -51,6 +65,11 @@ export declare class JsonUITestRunner {
      * self-describing.
      */
     private currentTestName;
+    /**
+     * The screen the previously executed inline step ran on; undefined means
+     * "unknown", which forces the next inline step to be verified.
+     */
+    private trackedScreen;
     private currentCaseName;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
@@ -100,6 +119,11 @@ export declare class JsonUITestRunner {
     /** Instant visibility check (no polling) used by conditions */
     private isInstantlyVisible;
     private executeFlowSteps;
+    /**
+     * Implicit screen verification (canon: implicitVerification). Runs BEFORE
+     * the step, because the step is meant to run ON that screen.
+     */
+    private verifyScreenTransitionIfNeeded;
     private executeFlowStep;
     private executeBlockStep;
     private executeFileReferenceStep;

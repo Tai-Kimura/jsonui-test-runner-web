@@ -14,6 +14,8 @@ const MockClient_1 = require("./MockClient");
 const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
     defaultTimeout: 5000,
+    verifyScreenTransitions: false,
+    screenTransitionTimeout: 10000,
     screenshotOnFailure: true,
     screenshotDir: './screenshots',
     platform: 'web',
@@ -585,6 +587,26 @@ class JsonUITestRunner {
             await this.executeFlowStep(step, warnings);
         }
     }
+    /**
+     * Implicit screen verification (canon: implicitVerification). Runs BEFORE
+     * the step, because the step is meant to run ON that screen.
+     */
+    async verifyScreenTransitionIfNeeded(step) {
+        if (!this.config.verifyScreenTransitions)
+            return;
+        const screen = step.screen;
+        if (!screen)
+            return;
+        // Same screen as the last executed step: nothing has changed.
+        if (screen === this.trackedScreen)
+            return;
+        await this.assertionExecutor.execute({
+            assert: 'screen',
+            name: screen,
+            timeout: this.config.screenTransitionTimeout,
+        });
+        this.trackedScreen = screen;
+    }
     async executeFlowStep(step, warnings) {
         // Evaluate step-level `when` for file/block/inline steps
         if (step.when && !(await this.evaluateCondition(step.when))) {
@@ -593,6 +615,10 @@ class JsonUITestRunner {
         }
         // Handle file reference steps
         if ((0, types_1.isFileReference)(step)) {
+            // A file reference carries no screen of its own, and the case it runs
+            // may end anywhere — reset to unknown so the next inline step is
+            // verified rather than trusted.
+            this.trackedScreen = undefined;
             await this.executeFileReferenceStep(step, warnings);
             return;
         }
@@ -602,6 +628,7 @@ class JsonUITestRunner {
             return;
         }
         // Handle inline steps - convert FlowTestStep to TestStep and execute
+        await this.verifyScreenTransitionIfNeeded(step);
         await this.executeStepGuarded(this.toTestStep(step), warnings);
     }
     async executeBlockStep(step, warnings) {

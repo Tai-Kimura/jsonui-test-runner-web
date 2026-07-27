@@ -13,6 +13,12 @@ import { StateProvider } from '../runner/StateProvider';
 export declare class AssertionExecutor {
     private page;
     private defaultTimeout;
+    /**
+     * Cross-screen waits are legitimately slower than in-screen ones: real
+     * suites already hand-write 15-20s after a cold start. Kept distinct from
+     * defaultTimeout so raising one does not silently raise the other.
+     */
+    private screenTransitionTimeout;
     private stateProvider?;
     private baselineDir;
     private updateBaselines;
@@ -22,6 +28,7 @@ export declare class AssertionExecutor {
         stateProvider?: StateProvider;
         baselineDir?: string;
         updateBaselines?: boolean;
+        screenTransitionTimeout?: number;
     });
     /**
      * Execute an assertion step
@@ -33,6 +40,33 @@ export declare class AssertionExecutor {
      * The last error message is thrown on timeout.
      */
     private pollUntil;
+    /**
+     * `assert: "screen"` — the named screen IS DISPLAYED.
+     *
+     * Not "displayed exclusively": embedded screens, split panes and tab hosts
+     * legitimately show several markers at once, so this only ever looks at the
+     * target's own marker.
+     *
+     * Measured with React 19 SSR + a suspending transition: a client-side swap
+     * never exposes two screens' markers at once, and a pending transition
+     * never mounts the destination's marker early — while it is pending, NO
+     * marker is present. So the predicate needs no exclusivity test and no
+     * transition handling, and a zero-marker reading is only meaningful once
+     * the timeout has expired.
+     *
+     * Known limitation (measured, deliberately not part of the predicate):
+     * server-rendered markup carries the marker before hydration, so on the
+     * FIRST document load this can pass while clicks are still being dropped.
+     * React exposes no standard "hydrated" signal, so gating on one is not
+     * implementable; it does not recur on client-side navigation.
+     */
+    private assertScreen;
+    /**
+     * Canonical failure classes: a missing marker anywhere is stale generated
+     * code or a stale build (infrastructure), while the previous screen still
+     * being the only one present means the navigation did not happen.
+     */
+    private screenDiagnosis;
     private assertVisible;
     private assertNotVisible;
     private assertEnabled;
