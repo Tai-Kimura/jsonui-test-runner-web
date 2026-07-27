@@ -14,7 +14,7 @@ const MockClient_1 = require("./MockClient");
 const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
     defaultTimeout: 5000,
-    verifyScreenTransitions: false,
+    verifyScreenTransitions: true,
     screenTransitionTimeout: 10000,
     screenshotOnFailure: true,
     screenshotDir: './screenshots',

@@ -43,9 +43,12 @@ export interface TestRunnerConfig {
   /**
    * Verify the screen marker automatically whenever a flow's inline step
    * moves to a different `screen`, without the test spelling an assertion.
-   * Requires the app to be built with generated code new enough to emit
-   * markers, so it stays opt-in until a project has rebuilt; the canonical
-   * end state is on-by-default.
+   * ON by default — this is the canonical behaviour.
+   *
+   * An app whose generated code predates screen markers will fail every
+   * screen change with `marker-absent`. That is the intended signal: the app
+   * needs `jui build` and a current build. Set this to false to opt out while
+   * migrating.
    */
   verifyScreenTransitions?: boolean;
   /**
@@ -86,7 +89,7 @@ type ResolvedConfig =
 
 const DEFAULT_CONFIG: ResolvedConfig = {
   defaultTimeout: 5000,
-  verifyScreenTransitions: false,
+  verifyScreenTransitions: true,
   screenTransitionTimeout: 10000,
   screenshotOnFailure: true,
   screenshotDir: './screenshots',
