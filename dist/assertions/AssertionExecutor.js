@@ -167,9 +167,11 @@ class AssertionExecutor {
         });
     }
     /**
-     * Canonical failure classes: a missing marker anywhere is stale generated
-     * code or a stale build (infrastructure), while the previous screen still
-     * being the only one present means the navigation did not happen.
+     * Canonical failure classes. The class names the likely CAUSE, not a
+     * severity — every one of them fails the assertion just the same. A missing
+     * marker anywhere points at the build (production build or stale generated
+     * code), while the previous screen still being the only one present points
+     * at the app or the test: the navigation did not happen.
      */
     async screenDiagnosis(screenId) {
         const present = await this.page
