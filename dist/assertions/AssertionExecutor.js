@@ -179,7 +179,13 @@ class AssertionExecutor {
             .evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-screen')).filter((v) => !!v))
             .catch(() => []);
         if (present.length === 0) {
-            return ('marker-absent: no screen marker anywhere. The app is either built for production ' +
+            // Name what the browser is actually showing: a redirect (auth wall,
+            // error page) also has no markers, and there the build is not the
+            // suspect — same misdiagnosis class as Android's foreground-app case.
+            const where = this.page.url();
+            return (`marker-absent: no screen marker anywhere (current page: ${where}). ` +
+                'If this is not the screen under test, navigation went elsewhere — the build is ' +
+                'not the suspect. Otherwise the app is either built for production ' +
                 '(markers are development-only) or its generated code is stale — rebuild with `jui build`.');
         }
         return `previous-screen-only: '${screenId}' is not displayed; displayed screens are ${JSON.stringify(present)}`;

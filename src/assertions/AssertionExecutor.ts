@@ -179,8 +179,14 @@ export class AssertionExecutor {
       .catch(() => [] as string[]);
 
     if (present.length === 0) {
+      // Name what the browser is actually showing: a redirect (auth wall,
+      // error page) also has no markers, and there the build is not the
+      // suspect — same misdiagnosis class as Android's foreground-app case.
+      const where = this.page.url();
       return (
-        'marker-absent: no screen marker anywhere. The app is either built for production ' +
+        `marker-absent: no screen marker anywhere (current page: ${where}). ` +
+        'If this is not the screen under test, navigation went elsewhere — the build is ' +
+        'not the suspect. Otherwise the app is either built for production ' +
         '(markers are development-only) or its generated code is stale — rebuild with `jui build`.'
       );
     }
