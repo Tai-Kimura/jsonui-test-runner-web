@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
     screenshotDir: './screenshots',
     platform: 'web',
     verbose: false,
+    caseRetries: 0,
     stateProvider: undefined,
     baselineDir: './baselines',
     updateBaselines: false,
@@ -179,8 +180,7 @@ class JsonUITestRunner {
                 });
                 continue;
             }
-            const result = await this.runTestCase(test.metadata.name, testCase);
-            results.push(result);
+            results.push(await this.runTestCaseWithRetries(test.metadata.name, testCase));
         }
         // Run teardown (guaranteed). A teardown failure is recorded as an extra failed result.
         if (test.teardown) {
@@ -270,26 +270,44 @@ class JsonUITestRunner {
                 return result;
             }
         }
-        try {
-            // Run setup
-            if (test.setup) {
-                this.log('Running flow setup...');
-                await this.executeFlowSteps(test.setup, warnings);
+        // The flow body (setup + steps) is the retry unit: flows begin with
+        // their own launch/navigation steps, so a re-run starts clean. Teardown
+        // still runs exactly once, after the final attempt. Warnings from a
+        // failed non-final attempt are dropped (same rule as the `retry` step).
+        const maxAttempts = Math.max(0, this.config.caseRetries ?? 0) + 1;
+        let flowAttempts = 0;
+        do {
+            flowAttempts++;
+            flowError = null;
+            const attemptWarnings = [];
+            try {
+                // Run setup
+                if (test.setup) {
+                    this.log('Running flow setup...');
+                    await this.executeFlowSteps(test.setup, attemptWarnings);
+                }
+                // Run flow steps
+                this.log('Running flow steps...');
+                await this.executeFlowSteps(test.steps, attemptWarnings);
             }
-            // Run flow steps
-            this.log('Running flow steps...');
-            await this.executeFlowSteps(test.steps, warnings);
-        }
-        catch (error) {
-            flowError = error instanceof Error ? error.message : String(error);
-            this.log(`Flow test failed: ${flowError}`);
-        }
+            catch (error) {
+                flowError = error instanceof Error ? error.message : String(error);
+                this.log(`Flow test failed: ${flowError}`);
+            }
+            if (flowError === null || flowAttempts >= maxAttempts) {
+                warnings.push(...attemptWarnings);
+            }
+            else {
+                this.log(`  Flow failed — retry attempt ${flowAttempts + 1}/${maxAttempts}`);
+            }
+        } while (flowError !== null && flowAttempts < maxAttempts);
         results.push({
             testName: test.metadata.name,
             caseName: 'flow',
             passed: flowError === null,
             error: flowError ?? undefined,
             warnings: warnings.length > 0 ? warnings : undefined,
+            attempts: flowAttempts,
             durationMs: Date.now() - startTime
         });
         // Run teardown (guaranteed)
@@ -324,6 +342,25 @@ class JsonUITestRunner {
             results,
             totalDurationMs: Date.now() - startTime
         };
+    }
+    /**
+     * Run a case, re-running it up to `caseRetries` extra times while it
+     * fails. The returned result is the final attempt's, stamped with the
+     * total attempt count (skipped rows never ran and carry none).
+     */
+    async runTestCaseWithRetries(testName, testCase) {
+        const maxAttempts = Math.max(0, this.config.caseRetries ?? 0) + 1;
+        let attempts = 1;
+        let result = await this.runTestCase(testName, testCase);
+        while (!result.passed && !result.skipped && attempts < maxAttempts) {
+            attempts++;
+            this.log(`  Case ${testCase.name} failed — retry attempt ${attempts}/${maxAttempts}`);
+            result = await this.runTestCase(testName, testCase);
+        }
+        if (!result.skipped) {
+            result.attempts = attempts;
+        }
+        return result;
     }
     async runTestCase(testName, testCase) {
         const startTime = Date.now();

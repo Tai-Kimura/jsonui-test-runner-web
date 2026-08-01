@@ -80,6 +80,14 @@ class ResultsWriter {
                     if (result.warnings !== undefined && result.warnings.length > 0) {
                         entry.warnings = result.warnings;
                     }
+                    if (!result.skipped && result.attempts !== undefined) {
+                        entry.attempts = result.attempts;
+                        // flaky is only meaningful on a pass that needed retries
+                        // (results.schema.json; the validator rejects flaky on failures)
+                        if (result.passed && result.attempts > 1) {
+                            entry.flaky = true;
+                        }
+                    }
                     return entry;
                 })
             }))

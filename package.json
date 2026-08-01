@@ -1,6 +1,6 @@
 {
   "name": "jsonui-test-runner-web",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "JsonUI Test Runner for Web - Playwright-based test runner for ReactJsonUI applications",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

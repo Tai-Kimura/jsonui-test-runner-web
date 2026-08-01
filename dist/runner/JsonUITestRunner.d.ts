@@ -31,6 +31,15 @@ export interface TestRunnerConfig {
     screenshotDir?: string;
     platform?: string;
     verbose?: boolean;
+    /**
+     * Extra attempts for a FAILED case (or flow body) before recording the
+     * failure — 0 (default) keeps single-run behaviour. The final result
+     * carries `attempts` (total runs) and a pass after a retry is marked
+     * `flaky` in the results JSON. Retries re-run the case steps as-is —
+     * there is no per-case re-open (§8.1), so cases that mutate app state
+     * non-idempotently may not benefit.
+     */
+    caseRetries?: number;
     /** Provider for `state` assertions and `state` conditions */
     stateProvider?: StateProvider;
     /** Baseline directory for the `screenshot` assertion (default './baselines') */
@@ -95,6 +104,12 @@ export declare class JsonUITestRunner {
      * Run a flow test
      */
     runFlowTest(test: FlowTest, _testPath?: string): Promise<TestSuiteResult>;
+    /**
+     * Run a case, re-running it up to `caseRetries` extra times while it
+     * fails. The returned result is the final attempt's, stamped with the
+     * total attempt count (skipped rows never ran and carry none).
+     */
+    private runTestCaseWithRetries;
     private runTestCase;
     private executeSteps;
     /**

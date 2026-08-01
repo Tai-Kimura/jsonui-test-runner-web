@@ -31,6 +31,10 @@ export interface ResultsJsonResult {
   /** Why a skipped result was skipped (platform vs responsive gate); only present on gate-caused skips */
   skipReason?: SkipReason;
   warnings?: string[];
+  /** Total runs including retries (1 = settled on the first run); absent on skipped rows */
+  attempts?: number;
+  /** True when the case passed but needed more than one attempt; only emitted on such passes */
+  flaky?: boolean;
   durationMs: number;
 }
 
@@ -78,6 +82,14 @@ export class ResultsWriter {
           }
           if (result.warnings !== undefined && result.warnings.length > 0) {
             entry.warnings = result.warnings;
+          }
+          if (!result.skipped && result.attempts !== undefined) {
+            entry.attempts = result.attempts;
+            // flaky is only meaningful on a pass that needed retries
+            // (results.schema.json; the validator rejects flaky on failures)
+            if (result.passed && result.attempts > 1) {
+              entry.flaky = true;
+            }
           }
           return entry;
         })

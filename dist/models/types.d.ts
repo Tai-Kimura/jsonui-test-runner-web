@@ -322,6 +322,12 @@ export interface TestResult {
     error?: string;
     /** Warnings collected during the case (optional-step failures, baseline created, ...) */
     warnings?: string[];
+    /**
+     * How many times the case ran in total, retries included (1 = settled on
+     * the first run). Unset on skipped rows — a case that never ran has no
+     * attempt count (results.schema.json attempts).
+     */
+    attempts?: number;
     durationMs: number;
 }
 export interface TestSuiteResult {

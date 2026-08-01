@@ -230,3 +230,99 @@ describe('ResultsWriter skipReason serialization', () => {
     expect(json.version).toBe(1);
   });
 });
+
+describe('caseRetries — attempts/flaky accounting', () => {
+  function makeFlakyRunner(retries: number, passOnAttempt: number): { runner: JsonUITestRunner; calls: () => number } {
+    const runner = makeRunner({ width: 1280, height: 800 }, { caseRetries: retries });
+    let calls = 0;
+    jest.spyOn(runner as unknown as { runTestCase: () => void }, 'runTestCase').mockImplementation(
+      (async (testName: string, testCase: TestCase) => {
+        calls++;
+        const passed = calls >= passOnAttempt;
+        return {
+          testName,
+          caseName: testCase.name,
+          passed,
+          error: passed ? undefined : 'boom',
+          durationMs: 1
+        };
+      }) as never
+    );
+    return { runner, calls: () => calls };
+  }
+
+  it('passes on the second attempt: attempts 2, result passed', async () => {
+    const { runner, calls } = makeFlakyRunner(2, 2);
+    const suite = await runner.runScreenTest(makeScreenTest([{ name: 'flaky', steps: [] }]));
+    expect(calls()).toBe(2);
+    expect(suite.results[0]).toMatchObject({ passed: true, attempts: 2 });
+  });
+
+  it('exhausts retries: attempts = retries + 1, result failed', async () => {
+    const { runner, calls } = makeFlakyRunner(2, 99);
+    const suite = await runner.runScreenTest(makeScreenTest([{ name: 'hopeless', steps: [] }]));
+    expect(calls()).toBe(3);
+    expect(suite.results[0]).toMatchObject({ passed: false, attempts: 3, error: 'boom' });
+  });
+
+  it('default config runs once and stamps attempts 1', async () => {
+    const runner = makeRunner({ width: 1280, height: 800 });
+    const suite = await runner.runScreenTest(makeScreenTest([{ name: 'plain', steps: [] }]));
+    expect(suite.results[0]).toMatchObject({ passed: true, attempts: 1 });
+  });
+
+  it('skipped cases carry no attempts', async () => {
+    const runner = makeRunner({ width: 1280, height: 800 }, { caseRetries: 2 });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'skipped', skip: true, steps: [] }])
+    );
+    expect(suite.results[0].skipped).toBe(true);
+    expect(suite.results[0].attempts).toBeUndefined();
+  });
+
+  it('retries the flow body and stamps attempts on the flow row', async () => {
+    const runner = makeRunner({ width: 1280, height: 800 }, { caseRetries: 1 });
+    let bodyRuns = 0;
+    jest.spyOn(runner as unknown as { executeFlowSteps: () => void }, 'executeFlowSteps').mockImplementation(
+      (async () => {
+        bodyRuns++;
+        if (bodyRuns === 1) throw new Error('first attempt fails');
+      }) as never
+    );
+    const flow: FlowTest = {
+      type: 'flow',
+      metadata: { name: 'FlakyFlow' },
+      steps: [{ screen: 'home', action: 'wait', seconds: 0 } as never]
+    };
+    const suite = await runner.runFlowTest(flow);
+    const flowRow = suite.results.find(r => r.caseName === 'flow');
+    expect(flowRow).toMatchObject({ passed: true, attempts: 2 });
+  });
+});
+
+describe('ResultsWriter attempts/flaky serialization', () => {
+  it('emits attempts always and flaky only on retried passes', () => {
+    const json = ResultsWriter.toResultsJson([
+      {
+        suiteName: 'T',
+        totalDurationMs: 1,
+        results: [
+          { testName: 'T', caseName: 'first-run pass', passed: true, attempts: 1, durationMs: 1 },
+          { testName: 'T', caseName: 'flaky pass', passed: true, attempts: 2, durationMs: 1 },
+          { testName: 'T', caseName: 'true failure', passed: false, attempts: 3, error: 'x', durationMs: 1 },
+          { testName: 'T', caseName: 'skipped', passed: true, skipped: true, durationMs: 0 }
+        ]
+      }
+    ]);
+    const rows = json.suites[0].results;
+    expect(rows[0]).toMatchObject({ status: 'passed', attempts: 1 });
+    expect(rows[0].flaky).toBeUndefined();
+    expect(rows[1]).toMatchObject({ status: 'passed', attempts: 2, flaky: true });
+    expect(rows[2]).toMatchObject({ status: 'failed', attempts: 3 });
+    expect(rows[2].flaky).toBeUndefined();
+    expect(rows[3].attempts).toBeUndefined();
+    expect(rows[3].flaky).toBeUndefined();
+    // results version stays 1 (attempts/flaky are optional fields)
+    expect(json.version).toBe(1);
+  });
+});

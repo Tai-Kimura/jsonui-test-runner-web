@@ -23,6 +23,10 @@ export interface ResultsJsonResult {
     /** Why a skipped result was skipped (platform vs responsive gate); only present on gate-caused skips */
     skipReason?: SkipReason;
     warnings?: string[];
+    /** Total runs including retries (1 = settled on the first run); absent on skipped rows */
+    attempts?: number;
+    /** True when the case passed but needed more than one attempt; only emitted on such passes */
+    flaky?: boolean;
     durationMs: number;
 }
 export declare class ResultsWriter {
