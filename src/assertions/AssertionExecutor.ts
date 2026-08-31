@@ -154,6 +154,19 @@ export class AssertionExecutor {
     if (!screenId) {
       throw new Error("screen requires 'name'");
     }
+    await this.waitForScreenMarker(screenId, timeout);
+  }
+
+  /**
+   * Wait until the named screen's marker is displayed. Public because the
+   * runner's readiness gate needs the same predicate and, more importantly,
+   * the same diagnosis: a second implementation would answer "not ready"
+   * where this one answers "built for production" or "navigation went
+   * elsewhere", and those are the sentences that end the investigation.
+   *
+   * Throws the last diagnosis on timeout.
+   */
+  async waitForScreenMarker(screenId: string, timeout: number): Promise<void> {
     const locator = this.page.locator(`[data-screen="${screenId}"]`);
 
     await this.pollUntil(timeout, async () => {

@@ -10,6 +10,7 @@ const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const types_1 = require("../models/types");
 const TestLoader_1 = require("./TestLoader");
 const MockClient_1 = require("./MockClient");
+const screenIdentity_1 = require("./screenIdentity");
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
@@ -26,7 +27,9 @@ const DEFAULT_CONFIG = {
     updateBaselines: false,
     mockServerUrl: undefined,
     mockToken: undefined,
-    responsive: { medium: 768, regular: 1024 }
+    responsive: { medium: 768, regular: 1024 },
+    screenReadyStrategy: 'auto',
+    screenReadyTimeout: 15000
 };
 /**
  * Injected into every document: records window.open calls so the `openedUrl`
@@ -154,7 +157,7 @@ class JsonUITestRunner {
         }
         // Wait for UI to be ready
         this.log('Waiting for UI to be ready...');
-        await this.page.waitForLoadState('networkidle');
+        await this.waitForScreenReady(test);
         await this.page.waitForTimeout(500);
         // Run setup. If setup throws, every case is recorded as failed but teardown still runs.
         let setupError = null;
@@ -764,6 +767,77 @@ class JsonUITestRunner {
     log(message) {
         if (this.config.verbose) {
             console.log(`[JsonUITestRunner] ${message}`);
+        }
+    }
+    /**
+     * Unconditional counterpart to `log`. Used only where staying quiet is the
+     * defect: a run that silently waits on the network gate looks exactly like
+     * a run that waited on the marker, right up to the 30s timeout that
+     * follows.
+     */
+    notice(message) {
+        console.warn(`[JsonUITestRunner] ${message}`);
+    }
+    /**
+     * Block until the screen under test is on the page.
+     *
+     * Was `waitForLoadState('networkidle')`: 500ms of network silence. That is
+     * a condition on every resource the page references, not on the screen —
+     * one request that hangs (a decorative image on somebody else's server)
+     * and it never fires. The screen renders correctly, the mocks apply, and
+     * the run fails with `Test timeout of 30000ms exceeded` and nothing else,
+     * which is the most expensive shape a failure can have: the reporting
+     * lane eliminated eight hypotheses before reaching this one.
+     *
+     * The marker is the same fact the `screen` assertion already reads, so the
+     * wait and the assertion agree by construction, and the failure text comes
+     * from the one diagnosis that knows about production builds and stale
+     * generated code.
+     */
+    async waitForScreenReady(test) {
+        const screenId = (0, screenIdentity_1.screenIdFromLayout)(test.source?.layout);
+        const strategy = this.config.screenReadyStrategy;
+        if (strategy === 'networkidle') {
+            this.notice("screen ready: 'networkidle' gate (forced by screenReadyStrategy). " +
+                'A single hung request holds this open until the test times out.');
+            await this.page.waitForLoadState('networkidle');
+            return;
+        }
+        if (!screenId) {
+            const where = test.source?.layout ? `'${test.source.layout}'` : '(absent)';
+            if (strategy === 'marker') {
+                throw new Error(`screen ready: 'marker' gate was forced but no screen id could be derived ` +
+                    `from source.layout ${where}. Point source.layout at the screen's layout ` +
+                    `file, or set screenReadyStrategy: 'networkidle'.`);
+            }
+            // Announced, not silent. This is the gate that hangs, and a run that
+            // fell back into it without saying so is indistinguishable from one
+            // that used the marker — until both fail the same way.
+            this.notice(`screen ready: no screen id could be derived from source.layout ${where}, ` +
+                "so this screen falls back to the 'networkidle' gate. A single hung " +
+                'request holds it open until the test times out.');
+            await this.page.waitForLoadState('networkidle');
+            return;
+        }
+        if (strategy === 'marker') {
+            this.notice(`screen ready: marker gate for '${screenId}' (forced by screenReadyStrategy).`);
+        }
+        else {
+            this.log(`Waiting for the '${screenId}' screen marker...`);
+        }
+        try {
+            await this.assertionExecutor.waitForScreenMarker(screenId, this.config.screenReadyTimeout);
+        }
+        catch (error) {
+            // The diagnosis already separates production build / stale generated
+            // code / navigated elsewhere. Only the gate's own context is added —
+            // which wait this was, and the way out for a project whose screens
+            // are not generated.
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new Error(`screen not ready: ${detail}\n` +
+                `(readiness gate waited ${this.config.screenReadyTimeout}ms for the ` +
+                `'${screenId}' marker. A project whose screens are hand-written can set ` +
+                "screenReadyStrategy: 'networkidle'.)");
         }
     }
 }

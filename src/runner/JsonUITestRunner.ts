@@ -31,6 +31,7 @@ import {
 import { TestLoader } from './TestLoader';
 import { StateProvider } from './StateProvider';
 import { MockClient } from './MockClient';
+import { screenIdFromLayout } from './screenIdentity';
 
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
@@ -88,6 +89,30 @@ export interface TestRunnerConfig {
    * via config).
    */
   responsive?: Partial<ResponsiveThresholds>;
+  /**
+   * How a screen test decides the UI is ready before setup runs.
+   *
+   * `'auto'` (default): wait for the screen's own `data-screen` marker when
+   * a screen id can be derived from `source.layout`, and fall back to
+   * `networkidle` when it cannot (a hand-written page). The fallback always
+   * says so on stderr — a silent fallback is the exact failure this gate
+   * was rewritten to remove.
+   *
+   * The marker is a fact about the app, decided by the app. `networkidle`
+   * is 500ms of network silence, which is a fact about every resource the
+   * page happens to reference: one hung request for a decorative image and
+   * it never fires, so a screen that rendered perfectly fails on a bare
+   * 30s timeout with nothing else to go on.
+   *
+   * `'marker'` / `'networkidle'` force one gate. Both announce themselves.
+   */
+  screenReadyStrategy?: 'auto' | 'marker' | 'networkidle';
+  /**
+   * Timeout for the marker gate. Larger than defaultTimeout because this is
+   * the first paint after a cold dev-server start, the slowest moment in a
+   * run.
+   */
+  screenReadyTimeout?: number;
 }
 
 type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken';
@@ -110,7 +135,9 @@ const DEFAULT_CONFIG: ResolvedConfig = {
   updateBaselines: false,
   mockServerUrl: undefined,
   mockToken: undefined,
-  responsive: { medium: 768, regular: 1024 }
+  responsive: { medium: 768, regular: 1024 },
+  screenReadyStrategy: 'auto',
+  screenReadyTimeout: 15000
 };
 
 /**
@@ -265,7 +292,7 @@ export class JsonUITestRunner {
 
     // Wait for UI to be ready
     this.log('Waiting for UI to be ready...');
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForScreenReady(test);
     await this.page.waitForTimeout(500);
 
     // Run setup. If setup throws, every case is recorded as failed but teardown still runs.
@@ -917,6 +944,90 @@ export class JsonUITestRunner {
   private log(message: string): void {
     if (this.config.verbose) {
       console.log(`[JsonUITestRunner] ${message}`);
+    }
+  }
+
+  /**
+   * Unconditional counterpart to `log`. Used only where staying quiet is the
+   * defect: a run that silently waits on the network gate looks exactly like
+   * a run that waited on the marker, right up to the 30s timeout that
+   * follows.
+   */
+  private notice(message: string): void {
+    console.warn(`[JsonUITestRunner] ${message}`);
+  }
+
+  /**
+   * Block until the screen under test is on the page.
+   *
+   * Was `waitForLoadState('networkidle')`: 500ms of network silence. That is
+   * a condition on every resource the page references, not on the screen —
+   * one request that hangs (a decorative image on somebody else's server)
+   * and it never fires. The screen renders correctly, the mocks apply, and
+   * the run fails with `Test timeout of 30000ms exceeded` and nothing else,
+   * which is the most expensive shape a failure can have: the reporting
+   * lane eliminated eight hypotheses before reaching this one.
+   *
+   * The marker is the same fact the `screen` assertion already reads, so the
+   * wait and the assertion agree by construction, and the failure text comes
+   * from the one diagnosis that knows about production builds and stale
+   * generated code.
+   */
+  private async waitForScreenReady(test: ScreenTest): Promise<void> {
+    const screenId = screenIdFromLayout(test.source?.layout);
+    const strategy = this.config.screenReadyStrategy;
+
+    if (strategy === 'networkidle') {
+      this.notice(
+        "screen ready: 'networkidle' gate (forced by screenReadyStrategy). " +
+        'A single hung request holds this open until the test times out.'
+      );
+      await this.page.waitForLoadState('networkidle');
+      return;
+    }
+
+    if (!screenId) {
+      const where = test.source?.layout ? `'${test.source.layout}'` : '(absent)';
+      if (strategy === 'marker') {
+        throw new Error(
+          `screen ready: 'marker' gate was forced but no screen id could be derived ` +
+          `from source.layout ${where}. Point source.layout at the screen's layout ` +
+          `file, or set screenReadyStrategy: 'networkidle'.`
+        );
+      }
+      // Announced, not silent. This is the gate that hangs, and a run that
+      // fell back into it without saying so is indistinguishable from one
+      // that used the marker — until both fail the same way.
+      this.notice(
+        `screen ready: no screen id could be derived from source.layout ${where}, ` +
+        "so this screen falls back to the 'networkidle' gate. A single hung " +
+        'request holds it open until the test times out.'
+      );
+      await this.page.waitForLoadState('networkidle');
+      return;
+    }
+
+    if (strategy === 'marker') {
+      this.notice(`screen ready: marker gate for '${screenId}' (forced by screenReadyStrategy).`);
+    } else {
+      this.log(`Waiting for the '${screenId}' screen marker...`);
+    }
+    try {
+      await this.assertionExecutor.waitForScreenMarker(
+        screenId, this.config.screenReadyTimeout
+      );
+    } catch (error) {
+      // The diagnosis already separates production build / stale generated
+      // code / navigated elsewhere. Only the gate's own context is added —
+      // which wait this was, and the way out for a project whose screens
+      // are not generated.
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `screen not ready: ${detail}\n` +
+        `(readiness gate waited ${this.config.screenReadyTimeout}ms for the ` +
+        `'${screenId}' marker. A project whose screens are hand-written can set ` +
+        "screenReadyStrategy: 'networkidle'.)"
+      );
     }
   }
 }

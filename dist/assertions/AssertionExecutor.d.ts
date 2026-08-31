@@ -62,6 +62,16 @@ export declare class AssertionExecutor {
      */
     private assertScreen;
     /**
+     * Wait until the named screen's marker is displayed. Public because the
+     * runner's readiness gate needs the same predicate and, more importantly,
+     * the same diagnosis: a second implementation would answer "not ready"
+     * where this one answers "built for production" or "navigation went
+     * elsewhere", and those are the sentences that end the investigation.
+     *
+     * Throws the last diagnosis on timeout.
+     */
+    waitForScreenMarker(screenId: string, timeout: number): Promise<void>;
+    /**
      * Canonical failure classes. The class names the likely CAUSE, not a
      * severity — every one of them fails the assertion just the same. A missing
      * marker anywhere points at the build (production build or stale generated

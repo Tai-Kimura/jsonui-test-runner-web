@@ -8,13 +8,53 @@ import { JsonUITestRunner, TestRunnerConfig } from './JsonUITestRunner';
 import { ResultsWriter } from './ResultsWriter';
 import { FlowTest, ScreenTest, TestCase, WhenCondition } from '../models/types';
 
-function makeFakePage(viewport: { width: number; height: number } | null): Page {
+interface FakePageOptions {
+  /** `data-screen` values present on the page. Default: the one the fixture test declares. */
+  markers?: string[];
+  /** Whether a present marker reports itself visible. */
+  markerVisible?: boolean;
+  /** Records every `waitForLoadState` argument, so a test can prove the gate was NOT used. */
+  loadStates?: string[];
+}
+
+/**
+ * The readiness gate reads the DOM, so the fake has to model it — and model
+ * it strictly. An unmodelled selector THROWS rather than returning an empty
+ * locator: a fake that answers "nothing matched" to a question it does not
+ * understand cannot express the failure this gate exists to produce, and
+ * every marker test would pass for the wrong reason.
+ */
+function makeFakePage(
+  viewport: { width: number; height: number } | null,
+  options: FakePageOptions = {}
+): Page {
+  const markers = options.markers ?? ['test_screen'];
   const fake = {
     viewportSize: () => viewport,
     evaluate: async () => ({ width: 0, height: 0 }),
-    waitForLoadState: async () => undefined,
+    waitForLoadState: async (state?: string) => {
+      options.loadStates?.push(state ?? 'load');
+    },
     waitForTimeout: async () => undefined,
     screenshot: async () => Buffer.from(''),
+    url: () => 'http://localhost/fake',
+    locator: (selector: string) => {
+      const named = /^\[data-screen="(.+)"\]$/.exec(selector);
+      if (named) {
+        const present = markers.includes(named[1]);
+        return {
+          count: async () => (present ? 1 : 0),
+          first: () => ({ isVisible: async () => options.markerVisible ?? true })
+        };
+      }
+      if (selector === '[data-screen]') {
+        return {
+          count: async () => markers.length,
+          evaluateAll: async () => markers
+        };
+      }
+      throw new Error(`fake page: unmodelled selector ${selector}`);
+    },
     // window.open spy installation (openedUrl assert) — added in 1.5.0
     addInitScript: async () => undefined
   };
@@ -32,9 +72,13 @@ function makeScreenTest(cases: TestCase[]): ScreenTest {
 
 function makeRunner(
   viewport: { width: number; height: number } | null,
-  config: TestRunnerConfig = {}
+  config: TestRunnerConfig = {},
+  pageOptions: FakePageOptions = {}
 ): JsonUITestRunner {
-  return new JsonUITestRunner(makeFakePage(viewport), { screenshotOnFailure: false, ...config });
+  return new JsonUITestRunner(
+    makeFakePage(viewport, pageOptions),
+    { screenshotOnFailure: false, ...config }
+  );
 }
 
 describe('case-level responsive gating', () => {
@@ -324,5 +368,137 @@ describe('ResultsWriter attempts/flaky serialization', () => {
     expect(rows[3].flaky).toBeUndefined();
     // results version stays 1 (attempts/flaky are optional fields)
     expect(json.version).toBe(1);
+  });
+});
+
+/**
+ * The readiness gate.
+ *
+ * Was `waitForLoadState('networkidle')` — 500ms of network silence, a
+ * condition on every resource the page references rather than on the screen.
+ * A reporting lane hit it when a decorative image sat on a third-party host
+ * that stopped answering: 11 of the 43 tests whose scenarios referenced that
+ * host failed, 0 of the other 42, every failure a bare
+ * `Test timeout of 30000ms exceeded` on a screen that had rendered
+ * perfectly. Eight hypotheses were eliminated before the ninth was the gate.
+ *
+ * Web was also the only driver gating readiness on the network at all —
+ * Android waits on `device.waitForIdle`, a UI condition, and never saw this.
+ */
+describe('screen readiness gate', () => {
+  const screenTest = (layout?: string): ScreenTest => ({
+    type: 'screen',
+    source: { layout: layout as string },
+    metadata: { name: 'ReadyTest' },
+    cases: [{ name: 'noop', steps: [] }]
+  });
+
+  const viewport = { width: 1280, height: 800 };
+
+  it('waits for the marker and never touches the network gate', async () => {
+    // The claim is not "it passes" — it is that the passing run did not use
+    // networkidle at all. A gate that waited for both would still hang.
+    const loadStates: string[] = [];
+    const runner = makeRunner(viewport, {}, { markers: ['order_detail'], loadStates });
+    const suite = await runner.runScreenTest(screenTest('layouts/order_detail.json'));
+    expect(suite.results[0].passed).toBe(true);
+    expect(loadStates).toEqual([]);
+  });
+
+  it('is unaffected by a page whose network never goes idle', async () => {
+    // The unit-level form of the reported failure: `waitForLoadState` never
+    // resolves, exactly as it behaves with one hung request. The marker gate
+    // does not await it, so the run completes.
+    const page = makeFakePage(viewport, { markers: ['order_detail'] });
+    (page as unknown as { waitForLoadState: () => Promise<never> }).waitForLoadState =
+      () => new Promise<never>(() => { /* never settles, like a hung resource */ });
+    const runner = new JsonUITestRunner(page, { screenshotOnFailure: false });
+    const suite = await runner.runScreenTest(screenTest('layouts/order_detail.json'));
+    expect(suite.results[0].passed).toBe(true);
+  });
+
+  it('names a missing marker instead of timing out silently', async () => {
+    // Propagates rather than becoming a failed case row, which is what the
+    // networkidle timeout did too: the file cannot run, so it is not a
+    // per-case result. Only the message changes — from a bare
+    // `Test timeout of 30000ms exceeded` to what is actually wrong.
+    const runner = makeRunner(
+      viewport,
+      { screenReadyTimeout: 0 },
+      { markers: [] }
+    );
+    const error = await runner
+      .runScreenTest(screenTest('layouts/order_detail.json'))
+      .then(() => '', (e: Error) => e.message);
+    // The diagnosis comes from the assertion executor — one implementation,
+    // so the readiness failure and the `screen` assertion say the same thing
+    // about a production build and about stale generated code.
+    expect(error).toContain('screen not ready');
+    expect(error).toContain('marker-absent');
+    expect(error).toContain('production');
+    expect(error).toContain('jui build');
+    // and the way out for a project whose screens are not generated
+    expect(error).toContain('screenReadyStrategy');
+  });
+
+  it('distinguishes "a different screen is showing" from "no markers at all"', async () => {
+    const runner = makeRunner(
+      viewport,
+      { screenReadyTimeout: 0 },
+      { markers: ['catalog_page'] }
+    );
+    const error = await runner
+      .runScreenTest(screenTest('layouts/order_detail.json'))
+      .then(() => '', (e: Error) => e.message);
+    expect(error).toContain('previous-screen-only');
+    expect(error).toContain('catalog_page');
+    // The build is not the suspect here, so it must not be blamed.
+    expect(error).not.toContain('jui build');
+  });
+
+  it('announces the networkidle fallback when no screen id can be derived', async () => {
+    // A hand-written page has no marker and no layout to derive from. The
+    // fallback is correct; doing it in silence is what made the original
+    // failure so expensive, since the run looks identical either way.
+    const loadStates: string[] = [];
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const runner = makeRunner(viewport, {}, { loadStates });
+      const suite = await runner.runScreenTest(screenTest(undefined));
+      expect(suite.results[0].passed).toBe(true);
+      expect(loadStates).toEqual(['networkidle']);
+      const said = warn.mock.calls.map(c => String(c[0])).join('\n');
+      expect(said).toContain('no screen id');
+      expect(said).toContain('networkidle');
+      expect(said).toContain('hung request');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('announces a forced networkidle gate too', async () => {
+    const loadStates: string[] = [];
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const runner = makeRunner(
+        viewport,
+        { screenReadyStrategy: 'networkidle' },
+        { markers: ['order_detail'], loadStates }
+      );
+      await runner.runScreenTest(screenTest('layouts/order_detail.json'));
+      expect(loadStates).toEqual(['networkidle']);
+      expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('forced');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('fails clearly when the marker gate is forced but no id can be derived', async () => {
+    const runner = makeRunner(viewport, { screenReadyStrategy: 'marker' }, { markers: [] });
+    const error = await runner
+      .runScreenTest(screenTest(undefined))
+      .then(() => '', (e: Error) => e.message);
+    expect(error).toContain('no screen id could be derived');
+    expect(error).toContain('source.layout');
   });
 });

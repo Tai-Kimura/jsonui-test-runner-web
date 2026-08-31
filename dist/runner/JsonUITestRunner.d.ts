@@ -58,6 +58,30 @@ export interface TestRunnerConfig {
      * via config).
      */
     responsive?: Partial<ResponsiveThresholds>;
+    /**
+     * How a screen test decides the UI is ready before setup runs.
+     *
+     * `'auto'` (default): wait for the screen's own `data-screen` marker when
+     * a screen id can be derived from `source.layout`, and fall back to
+     * `networkidle` when it cannot (a hand-written page). The fallback always
+     * says so on stderr — a silent fallback is the exact failure this gate
+     * was rewritten to remove.
+     *
+     * The marker is a fact about the app, decided by the app. `networkidle`
+     * is 500ms of network silence, which is a fact about every resource the
+     * page happens to reference: one hung request for a decorative image and
+     * it never fires, so a screen that rendered perfectly fails on a bare
+     * 30s timeout with nothing else to go on.
+     *
+     * `'marker'` / `'networkidle'` force one gate. Both announce themselves.
+     */
+    screenReadyStrategy?: 'auto' | 'marker' | 'networkidle';
+    /**
+     * Timeout for the marker gate. Larger than defaultTimeout because this is
+     * the first paint after a cold dev-server start, the slowest moment in a
+     * run.
+     */
+    screenReadyTimeout?: number;
 }
 /**
  * Main test runner for JsonUI tests
@@ -150,6 +174,30 @@ export declare class JsonUITestRunner {
     private stepDescription;
     private takeScreenshot;
     private log;
+    /**
+     * Unconditional counterpart to `log`. Used only where staying quiet is the
+     * defect: a run that silently waits on the network gate looks exactly like
+     * a run that waited on the marker, right up to the 30s timeout that
+     * follows.
+     */
+    private notice;
+    /**
+     * Block until the screen under test is on the page.
+     *
+     * Was `waitForLoadState('networkidle')`: 500ms of network silence. That is
+     * a condition on every resource the page references, not on the screen —
+     * one request that hangs (a decorative image on somebody else's server)
+     * and it never fires. The screen renders correctly, the mocks apply, and
+     * the run fails with `Test timeout of 30000ms exceeded` and nothing else,
+     * which is the most expensive shape a failure can have: the reporting
+     * lane eliminated eight hypotheses before reaching this one.
+     *
+     * The marker is the same fact the `screen` assertion already reads, so the
+     * wait and the assertion agree by construction, and the failure text comes
+     * from the one diagnosis that knows about production builds and stale
+     * generated code.
+     */
+    private waitForScreenReady;
 }
 /**
  * Builder for creating test runner instances

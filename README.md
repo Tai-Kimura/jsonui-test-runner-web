@@ -189,8 +189,47 @@ interface TestRunnerConfig {
   screenshotDir?: string;       // Default: './screenshots'
   platform?: string;            // Default: 'web'
   verbose?: boolean;            // Default: false
+  screenReadyStrategy?: 'auto' | 'marker' | 'networkidle';  // Default: 'auto'
+  screenReadyTimeout?: number;  // Default: 15000ms
 }
 ```
+
+### When is a screen "ready"?
+
+A screen test waits for the screen's own `data-screen` marker — the same
+beacon the `screen` assertion reads — before running setup. The screen id is
+derived from `source.layout` (basename, minus `.json`, cut at the last `@`),
+so `docs/screens/layouts/order_detail.json` waits for
+`[data-screen="order_detail"]`.
+
+If no screen id can be derived (a hand-written page with no layout), the
+runner falls back to `waitForLoadState('networkidle')` **and says so on
+stderr**. `screenReadyStrategy` forces one gate either way.
+
+`networkidle` means "500ms with no network activity", which is a condition on
+every resource the page references rather than on the screen. One request
+that never completes holds it open until the test times out — the screen
+renders correctly, the assertions would all pass, and the only output is
+`Test timeout of 30000ms exceeded`.
+
+**Checking your own mocks for this:** an external URL is not the risk; a
+*hangable* one is. Measured against a real page:
+
+| URL in a mock body | Result |
+| --- | --- |
+| a host that does not resolve (DNS absent, reserved TLD like `.test`) | fails in ~1.5ms — harmless |
+| a real server you do not control | 404 in ~51ms on a good day, **30s timeouts when it is unwell** |
+
+So grepping your mocks to zero external hosts is not the check — a URL that
+resolves to somebody else's server is the one that can hang. Prefer `data:`
+URIs for decorative images in mock bodies.
+
+### Keeping failure artifacts
+
+Playwright deletes `test-results/` at the **start** of every run, so
+re-running a single failing test to "look at it again" destroys the video and
+error-context of the failure you were investigating. Copy the directory
+before re-running. `playwright-report/` is a separate directory and survives.
 
 ## Platform Targeting
 
