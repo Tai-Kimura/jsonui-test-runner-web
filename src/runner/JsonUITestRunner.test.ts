@@ -386,10 +386,13 @@ describe('ResultsWriter attempts/flaky serialization', () => {
  * Android waits on `device.waitForIdle`, a UI condition, and never saw this.
  */
 describe('screen readiness gate', () => {
-  const screenTest = (layout?: string): ScreenTest => ({
+  const screenTest = (
+    layout?: string, screenReady?: ScreenTest['screenReady']
+  ): ScreenTest => ({
     type: 'screen',
     source: { layout: layout as string },
     metadata: { name: 'ReadyTest' },
+    ...(screenReady === undefined ? {} : { screenReady }),
     cases: [{ name: 'noop', steps: [] }]
   });
 
@@ -500,5 +503,83 @@ describe('screen readiness gate', () => {
       .then(() => '', (e: Error) => e.message);
     expect(error).toContain('no screen id could be derived');
     expect(error).toContain('source.layout');
+  });
+
+  // A screen's marker is the right thing to wait for only when the screen is
+  // expected to render. Tests exist whose passing outcome is that it does not:
+  // a permission check that shows a refusal in its place, an expired refresh
+  // that lands on login. Their `source.layout` correctly names the screen they
+  // are about, so the id is derived correctly and the wait is still wrong.
+  // Seven such files in one project turned the gate into seven timeouts.
+  describe('a test that expects the screen NOT to render', () => {
+    it("skips the gate entirely on screenReady: 'none'", async () => {
+      const loadStates: string[] = [];
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        // No marker on the page — the refusal view replaced the screen.
+        const runner = makeRunner(viewport, {}, { markers: [], loadStates });
+        const suite = await runner.runScreenTest(
+          screenTest('layouts/admin_reservations.json', 'none'));
+        expect(suite.results[0].passed).toBe(true);
+        // Neither gate ran: not the marker (it would time out), and not
+        // networkidle either — falling back to it would re-import the hang
+        // this whole mechanism exists to avoid.
+        expect(loadStates).toEqual([]);
+        // Declared, not silent: the run says which gate it did not use.
+        expect(warn.mock.calls.map(c => String(c[0])).join('\n'))
+          .toContain('no gate');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('waits for where it lands instead, on screenReady: { marker }', async () => {
+      // The redirect case: dashboard's refresh expires and login renders.
+      // Naming login keeps a positive readiness condition rather than
+      // trading the gate away, so this file is still protected from hangs.
+      const loadStates: string[] = [];
+      const runner = makeRunner(
+        viewport, {}, { markers: ['login'], loadStates });
+      const suite = await runner.runScreenTest(
+        screenTest('layouts/dashboard.json', { marker: 'login' }));
+      expect(suite.results[0].passed).toBe(true);
+      expect(loadStates).toEqual([]);
+    });
+
+    it('still fails when the declared marker is the one that is missing', async () => {
+      // The declaration redirects the gate; it does not disable it.
+      const runner = makeRunner(
+        viewport, { screenReadyTimeout: 0 }, { markers: ['dashboard'] });
+      const error = await runner
+        .runScreenTest(screenTest('layouts/dashboard.json', { marker: 'login' }))
+        .then(() => '', (e: Error) => e.message);
+      expect(error).toContain('screen not ready');
+      expect(error).toContain('login');
+    });
+
+    it('outranks a project-wide strategy that forces the marker gate', async () => {
+      // Whichever way the project switch is set, the file's own statement is
+      // the more specific one — and `marker` is the setting that would
+      // otherwise make these seven files impossible to express.
+      const runner = makeRunner(
+        viewport, { screenReadyStrategy: 'marker' }, { markers: [] });
+      const suite = await runner.runScreenTest(
+        screenTest('layouts/admin_reservations.json', 'none'));
+      expect(suite.results[0].passed).toBe(true);
+    });
+
+    it('names the per-test ways out when the derived marker times out', async () => {
+      // The message a project meets before it knows the feature exists. It
+      // used to offer only the project-wide switch, which buys these tests by
+      // giving up the gate for every other file.
+      const runner = makeRunner(
+        viewport, { screenReadyTimeout: 0 }, { markers: [] });
+      const error = await runner
+        .runScreenTest(screenTest('layouts/admin_reservations.json'))
+        .then(() => '', (e: Error) => e.message);
+      expect(error).toContain("screenReady: 'none'");
+      expect(error).toContain('marker:');
+      expect(error).toContain('NOT to render');
+    });
   });
 });

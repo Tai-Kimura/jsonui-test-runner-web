@@ -972,14 +972,42 @@ export class JsonUITestRunner {
    * wait and the assertion agree by construction, and the failure text comes
    * from the one diagnosis that knows about production builds and stale
    * generated code.
+   *
+   * Waiting for the screen presumes the screen renders, and tests exist whose
+   * whole point is that it does not: a permission check that replaces the
+   * screen with a refusal, an expired refresh that lands on login. Those
+   * declare `screenReady` themselves. The project-wide `screenReadyStrategy`
+   * cannot express them — it is one switch for the whole run, so buying seven
+   * such tests with it costs the other hundred-odd the protection above.
    */
   private async waitForScreenReady(test: ScreenTest): Promise<void> {
+    // A test's own declaration outranks the project-wide strategy: it is the
+    // more specific statement, and it exists precisely for the files whose
+    // answer differs from the project's.
+    const declared = test.screenReady;
+    if (declared === 'none') {
+      this.notice(
+        "screen ready: no gate (this test declares screenReady: 'none'). " +
+        'Nothing is awaited before setup — the test does its own waiting.'
+      );
+      return;
+    }
+    if (typeof declared === 'object' && declared !== null) {
+      this.notice(
+        `screen ready: marker gate for '${declared.marker}' (declared by ` +
+        'this test, in place of the id derived from source.layout).'
+      );
+      await this.awaitMarker(declared.marker);
+      return;
+    }
+
     const screenId = screenIdFromLayout(test.source?.layout);
-    const strategy = this.config.screenReadyStrategy;
+    const strategy = declared ?? this.config.screenReadyStrategy;
 
     if (strategy === 'networkidle') {
       this.notice(
-        "screen ready: 'networkidle' gate (forced by screenReadyStrategy). " +
+        "screen ready: 'networkidle' gate (forced by " +
+        `${declared ? 'this test' : 'screenReadyStrategy'}). ` +
         'A single hung request holds this open until the test times out.'
       );
       await this.page.waitForLoadState('networkidle');
@@ -1008,10 +1036,16 @@ export class JsonUITestRunner {
     }
 
     if (strategy === 'marker') {
-      this.notice(`screen ready: marker gate for '${screenId}' (forced by screenReadyStrategy).`);
+      this.notice(`screen ready: marker gate for '${screenId}' (forced by ` +
+        `${declared ? 'this test' : 'screenReadyStrategy'}).`);
     } else {
       this.log(`Waiting for the '${screenId}' screen marker...`);
     }
+    await this.awaitMarker(screenId);
+  }
+
+  /** Wait for one screen marker, or fail with the gate's own context added. */
+  private async awaitMarker(screenId: string): Promise<void> {
     try {
       await this.assertionExecutor.waitForScreenMarker(
         screenId, this.config.screenReadyTimeout
@@ -1019,14 +1053,18 @@ export class JsonUITestRunner {
     } catch (error) {
       // The diagnosis already separates production build / stale generated
       // code / navigated elsewhere. Only the gate's own context is added —
-      // which wait this was, and the way out for a project whose screens
-      // are not generated.
+      // which wait this was, and the ways out. The per-test ones come first:
+      // a screen that is *supposed* to be absent is the case the project-wide
+      // switch answers by giving up the gate everywhere.
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
         `screen not ready: ${detail}\n` +
         `(readiness gate waited ${this.config.screenReadyTimeout}ms for the ` +
-        `'${screenId}' marker. A project whose screens are hand-written can set ` +
-        "screenReadyStrategy: 'networkidle'.)"
+        `'${screenId}' marker. If this test expects the screen NOT to render — ` +
+        'a permission refusal in its place, a redirect elsewhere — declare ' +
+        "screenReady: 'none', or screenReady: { marker: '<other-screen>' } to " +
+        'wait for where it lands instead. A project whose screens are all ' +
+        "hand-written can set screenReadyStrategy: 'networkidle'.)"
       );
     }
   }

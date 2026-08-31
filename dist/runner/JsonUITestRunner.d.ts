@@ -196,8 +196,17 @@ export declare class JsonUITestRunner {
      * wait and the assertion agree by construction, and the failure text comes
      * from the one diagnosis that knows about production builds and stale
      * generated code.
+     *
+     * Waiting for the screen presumes the screen renders, and tests exist whose
+     * whole point is that it does not: a permission check that replaces the
+     * screen with a refusal, an expired refresh that lands on login. Those
+     * declare `screenReady` themselves. The project-wide `screenReadyStrategy`
+     * cannot express them — it is one switch for the whole run, so buying seven
+     * such tests with it costs the other hundred-odd the protection above.
      */
     private waitForScreenReady;
+    /** Wait for one screen marker, or fail with the gate's own context added. */
+    private awaitMarker;
 }
 /**
  * Builder for creating test runner instances

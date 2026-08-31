@@ -224,6 +224,45 @@ So grepping your mocks to zero external hosts is not the check — a URL that
 resolves to somebody else's server is the one that can hang. Prefer `data:`
 URIs for decorative images in mock bodies.
 
+### When the screen is *supposed* not to render
+
+Waiting for the screen presumes the screen appears, and some tests pass
+precisely because it does not — a permission check that shows a refusal in
+its place, an expired session that redirects to login. Their `source.layout`
+correctly names the screen they are about, so the marker id is derived
+correctly and the wait still cannot succeed.
+
+`screenReadyStrategy` cannot express these: it is one switch for the whole
+run, so buying seven such files with it costs every other file the protection
+above. The file says it itself:
+
+```jsonc
+{
+  "type": "screen",
+  "source": { "layout": "layouts/admin_reservations.json" },
+  "screenReady": "none",          // no gate; the first step does the waiting
+  ...
+}
+```
+
+```jsonc
+  // Or name where it lands instead, which keeps a positive readiness
+  // condition — this file is still protected from a hung request.
+  "screenReady": { "marker": "login" },
+```
+
+| `screenReady` | Gate |
+| --- | --- |
+| absent / `"auto"` | the project-wide strategy (default: marker, falling back to networkidle) |
+| `"none"` | none — the test's own first step is responsible for waiting |
+| `{ "marker": "<screen id>" }` | that screen's marker, in place of the derived one |
+| `"marker"` / `"networkidle"` | forces one gate for this file alone |
+
+A file's declaration outranks `screenReadyStrategy`; every form announces
+itself on stderr. Requires driver **1.8.4** and jsonui-cli **1.7.31** (the
+canonical schema sets `additionalProperties: false`, so an older `jsonui-test
+validate` rejects the key).
+
 ### Keeping failure artifacts
 
 Playwright deletes `test-results/` at the **start** of every run, so

@@ -12,12 +12,28 @@ export interface ScreenTest {
     launch?: LaunchConfig;
     /** API mock scenario set applied (and the screen reloaded) before the cases run */
     mocks?: MockScenarioMap;
+    /**
+     * How this file decides the page is ready, overriding the project-wide
+     * `screenReadyStrategy`. Needed by tests whose expected outcome is that the
+     * screen does NOT render — a permission refusal shown in its place, an
+     * expired session redirecting to login — for which waiting on the screen's
+     * own marker can only ever time out.
+     *
+     * - `'none'` — no gate; the test's first step does the waiting.
+     * - `{ marker }` — wait for a different screen's marker (where it lands).
+     * - `'networkidle'` / `'auto'` — the project-wide gates, per file.
+     */
+    screenReady?: ScreenReady;
     setup?: TestStep[];
     teardown?: TestStep[];
     cases: TestCase[];
 }
 /** Map of OpenAPI operationId -> mock scenario name */
 export type MockScenarioMap = Record<string, string>;
+/** Per-file readiness gate — see `ScreenTest.screenReady`. */
+export type ScreenReady = 'auto' | 'marker' | 'networkidle' | 'none' | {
+    marker: string;
+};
 export interface TestSource {
     layout: string;
     spec?: string;
