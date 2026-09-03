@@ -465,15 +465,19 @@ export class ActionExecutor {
 
     const targetSelect = hasSelect ? select : element;
 
-    // Select by value, label, or index
-    if (step.value !== undefined) {
+    // Selector precedence is the schema's: index, then value, then label
+    // (schemas/actions.schema.json selectOptionAction; ios and android resolve
+    // in the same order). A lower selector is ignored when a higher one is
+    // present, so a free-text note in 'label' next to an 'index' never
+    // becomes the option to look for.
+    if (step.index !== undefined) {
+      await targetSelect.selectOption({ index: step.index });
+    } else if (step.value !== undefined) {
       await targetSelect.selectOption({ value: step.value });
     } else if (step.label !== undefined) {
       await targetSelect.selectOption({ label: step.label });
-    } else if (step.index !== undefined) {
-      await targetSelect.selectOption({ index: step.index });
     } else {
-      throw new Error("selectOption requires 'value', 'label', or 'index'");
+      throw new Error("selectOption requires 'index', 'value', or 'label'");
     }
   }
 

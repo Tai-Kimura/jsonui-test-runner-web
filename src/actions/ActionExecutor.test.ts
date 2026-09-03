@@ -1,5 +1,6 @@
 /**
- * Unit tests for the setViewport / setOrientation actions (fake Page — no browser)
+ * Unit tests for the setViewport / setOrientation / selectOption actions
+ * (fake Page — no browser)
  */
 
 import { Page } from 'playwright';
@@ -76,5 +77,71 @@ describe('unknown actions', () => {
     await expect(
       executor.execute({ action: 'flyToMoon' as never })
     ).rejects.toThrow('Unknown action: flyToMoon');
+  });
+});
+
+/**
+ * selectOption selector precedence (schema: index, then value, then label).
+ * The fake locator records what selectOption() was asked for; there is no
+ * <select> descendant, so the element itself receives the call.
+ */
+function makeSelectPage(): { page: Page; calls: unknown[] } {
+  const calls: unknown[] = [];
+  const leaf = {
+    waitFor: async () => undefined,
+    count: async () => 0,
+    selectOption: async (arg: unknown) => {
+      calls.push(arg);
+      return [];
+    },
+    locator: () => leaf,
+    first: () => leaf
+  };
+  const fake = { locator: () => leaf };
+  return { page: fake as unknown as Page, calls };
+}
+
+describe('selectOption precedence', () => {
+  it('index wins when index, value and label are all given', async () => {
+    // The 2026-09-03 consumer step: index plus a free-text note in label.
+    const { page, calls } = makeSelectPage();
+    const executor = new ActionExecutor(page);
+    await executor.execute({
+      action: 'selectOption', id: 'release_event_select',
+      index: 1, value: '2024', label: 'R2: first selectOption (note)'
+    });
+    expect(calls).toEqual([{ index: 1 }]);
+  });
+
+  it('value beats label when there is no index', async () => {
+    const { page, calls } = makeSelectPage();
+    const executor = new ActionExecutor(page);
+    await executor.execute({
+      action: 'selectOption', id: 'sel', value: '2024', label: 'Twenty twenty-four'
+    });
+    expect(calls).toEqual([{ value: '2024' }]);
+  });
+
+  it('label alone selects by label', async () => {
+    const { page, calls } = makeSelectPage();
+    const executor = new ActionExecutor(page);
+    await executor.execute({ action: 'selectOption', id: 'sel', label: 'Twenty twenty-four' });
+    expect(calls).toEqual([{ label: 'Twenty twenty-four' }]);
+  });
+
+  it('index 0 is an index, not absence', async () => {
+    const { page, calls } = makeSelectPage();
+    const executor = new ActionExecutor(page);
+    await executor.execute({ action: 'selectOption', id: 'sel', index: 0, value: 'x' });
+    expect(calls).toEqual([{ index: 0 }]);
+  });
+
+  it('requires one selector', async () => {
+    const { page, calls } = makeSelectPage();
+    const executor = new ActionExecutor(page);
+    await expect(executor.execute({ action: 'selectOption', id: 'sel' })).rejects.toThrow(
+      "selectOption requires 'index', 'value', or 'label'"
+    );
+    expect(calls).toEqual([]);
   });
 });
