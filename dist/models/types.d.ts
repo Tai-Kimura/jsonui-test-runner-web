@@ -327,6 +327,19 @@ export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
 /** Why a skipped result was skipped; only set for gate-caused skips (results.schema.json skipReason) */
 export type SkipReason = 'platform' | 'responsive';
+/**
+ * Machine-readable counterpart to a failed result's prose `error`
+ * (results.schema.json failureReason). Prose moves between releases: a
+ * consumer aggregation matched on a sentence another driver deleted, and
+ * would have reported zero occurrences of a thing that had only been
+ * reworded. `skipReason` has been an enum since it existed; failures had no
+ * such channel.
+ *
+ * The vocabulary is the failure's STAGE, not the error class — the three
+ * drivers share no taxonomy (this one throws a bare `Error` at 80 sites),
+ * so mapping classes would have produced three different enums.
+ */
+export type FailureReason = 'element-not-found' | 'timeout' | 'assertion' | 'invalid-test' | 'mock' | 'setup' | 'teardown' | 'launch' | 'action' | 'other';
 export interface TestResult {
     testName: string;
     caseName: string;
@@ -336,6 +349,12 @@ export interface TestResult {
     /** Why the case was skipped (platform vs responsive gate); unset for plain `skip: true` skips */
     skipReason?: SkipReason;
     error?: string;
+    /**
+     * Machine-readable counterpart to `error`; only meaningful when the case
+     * failed. Unset on a failure whose cause could not be classified at all —
+     * absent reads as unknown, never as "no reason".
+     */
+    failureReason?: FailureReason;
     /** Warnings collected during the case (optional-step failures, baseline created, ...) */
     warnings?: string[];
     /**

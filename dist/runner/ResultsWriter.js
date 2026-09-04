@@ -77,6 +77,12 @@ class ResultsWriter {
                     if (result.skipped && result.skipReason !== undefined) {
                         entry.skipReason = result.skipReason;
                     }
+                    // ...and failureReason only on failed ones: the validator rejects it
+                    // elsewhere, and a skipped row carrying one would claim a failure it
+                    // never had.
+                    if (!result.skipped && !result.passed && result.failureReason !== undefined) {
+                        entry.failureReason = result.failureReason;
+                    }
                     if (result.warnings !== undefined && result.warnings.length > 0) {
                         entry.warnings = result.warnings;
                     }

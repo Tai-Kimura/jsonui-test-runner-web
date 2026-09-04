@@ -8,6 +8,7 @@ exports.TestRunnerBuilder = exports.JsonUITestRunner = void 0;
 const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const types_1 = require("../models/types");
+const failureReason_1 = require("./failureReason");
 const TestLoader_1 = require("./TestLoader");
 const MockClient_1 = require("./MockClient");
 const screenIdentity_1 = require("./screenIdentity");
@@ -179,6 +180,9 @@ class JsonUITestRunner {
                     caseName: testCase.name,
                     passed: false,
                     error: `setup failed: ${setupError}`,
+                    // The STAGE: the case's own fixture steps failed, so the body
+                    // never ran and this row says nothing about the app.
+                    failureReason: 'setup',
                     durationMs: 0
                 });
                 continue;
@@ -200,6 +204,8 @@ class JsonUITestRunner {
                     caseName: 'teardown',
                     passed: false,
                     error: message,
+                    // A teardown failure is a teardown failure whatever threw it.
+                    failureReason: 'teardown',
                     durationMs: 0
                 });
             }
@@ -266,6 +272,7 @@ class JsonUITestRunner {
                             caseName: 'flow',
                             passed: false,
                             error: message,
+                            failureReason: (0, failureReason_1.classifyFailure)(error),
                             durationMs: Date.now() - startTime
                         }],
                     totalDurationMs: Date.now() - startTime
@@ -327,6 +334,8 @@ class JsonUITestRunner {
                     caseName: 'teardown',
                     passed: false,
                     error: message,
+                    // A teardown failure is a teardown failure whatever threw it.
+                    failureReason: 'teardown',
                     durationMs: 0
                 });
             }
@@ -432,6 +441,7 @@ class JsonUITestRunner {
                 caseName: testCase.name,
                 passed: false,
                 error: errorMessage,
+                failureReason: (0, failureReason_1.classifyFailure)(error),
                 warnings: warnings.length > 0 ? warnings : undefined,
                 durationMs: Date.now() - startTime
             };
