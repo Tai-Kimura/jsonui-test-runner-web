@@ -28,6 +28,7 @@ import {
   isFileReference,
   isBlockStep
 } from '../models/types';
+import { classifyFailure } from './failureReason';
 import { TestLoader } from './TestLoader';
 import { StateProvider } from './StateProvider';
 import { MockClient } from './MockClient';
@@ -315,6 +316,9 @@ export class JsonUITestRunner {
           caseName: testCase.name,
           passed: false,
           error: `setup failed: ${setupError}`,
+          // The STAGE: the case's own fixture steps failed, so the body
+          // never ran and this row says nothing about the app.
+          failureReason: 'setup',
           durationMs: 0
         });
         continue;
@@ -336,6 +340,8 @@ export class JsonUITestRunner {
           caseName: 'teardown',
           passed: false,
           error: message,
+          // A teardown failure is a teardown failure whatever threw it.
+          failureReason: 'teardown',
           durationMs: 0
         });
       }
@@ -408,6 +414,7 @@ export class JsonUITestRunner {
             caseName: 'flow',
             passed: false,
             error: message,
+            failureReason: classifyFailure(error),
             durationMs: Date.now() - startTime
           }],
           totalDurationMs: Date.now() - startTime
@@ -470,6 +477,8 @@ export class JsonUITestRunner {
           caseName: 'teardown',
           passed: false,
           error: message,
+          // A teardown failure is a teardown failure whatever threw it.
+          failureReason: 'teardown',
           durationMs: 0
         });
       }
@@ -585,6 +594,7 @@ export class JsonUITestRunner {
         caseName: testCase.name,
         passed: false,
         error: errorMessage,
+        failureReason: classifyFailure(error),
         warnings: warnings.length > 0 ? warnings : undefined,
         durationMs: Date.now() - startTime
       };

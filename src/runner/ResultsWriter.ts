@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { SkipReason, TestSuiteResult } from '../models/types';
+import { FailureReason, SkipReason, TestSuiteResult } from '../models/types';
 
 // MARK: - Results JSON shape (results.schema.json)
 
@@ -30,6 +30,8 @@ export interface ResultsJsonResult {
   error?: string;
   /** Why a skipped result was skipped (platform vs responsive gate); only present on gate-caused skips */
   skipReason?: SkipReason;
+  /** Machine-readable counterpart to `error`; only present on failed rows */
+  failureReason?: FailureReason;
   warnings?: string[];
   /** Total runs including retries (1 = settled on the first run); absent on skipped rows */
   attempts?: number;
@@ -79,6 +81,12 @@ export class ResultsWriter {
           // skipReason is only meaningful on skipped rows (schema: optional enum)
           if (result.skipped && result.skipReason !== undefined) {
             entry.skipReason = result.skipReason;
+          }
+          // ...and failureReason only on failed ones: the validator rejects it
+          // elsewhere, and a skipped row carrying one would claim a failure it
+          // never had.
+          if (!result.skipped && !result.passed && result.failureReason !== undefined) {
+            entry.failureReason = result.failureReason;
           }
           if (result.warnings !== undefined && result.warnings.length > 0) {
             entry.warnings = result.warnings;
