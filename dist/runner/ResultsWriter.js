@@ -86,6 +86,17 @@ class ResultsWriter {
                     if (result.warnings !== undefined && result.warnings.length > 0) {
                         entry.warnings = result.warnings;
                     }
+                    // Both halves of the orientation pair, or neither — a row carrying
+                    // only the request would read as agreement rather than as a missing
+                    // measurement, which is the shape this pair exists to prevent.
+                    if (!result.skipped) {
+                        if (result.declaredOrientation !== undefined) {
+                            entry.declaredOrientation = result.declaredOrientation;
+                        }
+                        if (result.observedOrientation !== undefined) {
+                            entry.observedOrientation = result.observedOrientation;
+                        }
+                    }
                     if (!result.skipped && result.attempts !== undefined) {
                         entry.attempts = result.attempts;
                         // flaky is only meaningful on a pass that needed retries

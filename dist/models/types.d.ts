@@ -23,6 +23,13 @@ export interface ScreenTest {
      * - `{ marker }` — wait for a different screen's marker (where it lands).
      * - `'networkidle'` / `'auto'` — the project-wide gates, per file.
      */
+    /**
+     * Orientation this file runs in, applied once when the run starts.
+     * Overrides the run default from `jsonui-test-run.json`; a `setOrientation`
+     * step still wins for the rotation it performs, so the order is
+     * step > this field > run default.
+     */
+    orientation?: ResponsiveOrientation;
     screenReady?: ScreenReady;
     setup?: TestStep[];
     teardown?: TestStep[];
@@ -74,6 +81,13 @@ export interface FlowTest {
      * Parity with ScreenTest.mocks; step-level setMocks handles mid-flow switches.
      */
     mocks?: Record<string, string>;
+    /**
+     * Orientation this file runs in, applied once when the run starts.
+     * Overrides the run default from `jsonui-test-run.json`; a `setOrientation`
+     * step still wins for the rotation it performs, so the order is
+     * step > this field > run default.
+     */
+    orientation?: ResponsiveOrientation;
     setup?: FlowTestStep[];
     teardown?: FlowTestStep[];
     steps: FlowTestStep[];
@@ -363,7 +377,49 @@ export interface TestResult {
      * attempt count (results.schema.json attempts).
      */
     attempts?: number;
+    /**
+     * The orientation this case ASKED for, after resolving the whole chain:
+     * a `setOrientation` step in the case, else the file's top-level
+     * `orientation`, else the run default for this viewport's tier. Unset when
+     * nothing declared one.
+     */
+    declaredOrientation?: ResponsiveOrientation;
+    /**
+     * The orientation the case ACTUALLY ran in, read from the viewport rather
+     * than derived from `declaredOrientation`.
+     *
+     * The two are separate fields because they can disagree. On Android
+     * `'portrait'` resolves to `setOrientationNatural()`, and a tablet whose
+     * natural orientation is landscape does not turn portrait — so a run that
+     * asked for one orientation and executed in the other is a real outcome
+     * with every assertion still passing. Deriving this from the declaration
+     * would make the two agree by construction, which is precisely the
+     * agreement the pair exists to measure. Web reports it the same way even
+     * though its viewport swap cannot disagree, so that a reader of the
+     * results does not have to branch per platform.
+     */
+    observedOrientation?: ResponsiveOrientation;
     durationMs: number;
+}
+/**
+ * Run-scoped defaults installed beside the tests as `jsonui-test-run.json`.
+ *
+ * The table is keyed by size tier, never resolved to one value, because one
+ * installed bundle is executed by every lane — phone and tablet run the same
+ * files against different devices — so a resolved value could be right for at
+ * most one of them. The driver reads the row for the tier it resolves at run
+ * time.
+ *
+ * `schemaVersion` exists because this file is read by drivers OLDER than the
+ * one that adds the next field to it, and `x-requires-driver` cannot gate
+ * them: iOS and Android driver versions are not readable from a project tree.
+ * A driver that does not know the version says so and ignores the file,
+ * rather than misreading it.
+ */
+export interface RunDefaults {
+    schemaVersion: number;
+    /** tier -> orientation. Present but empty when nothing is declared. */
+    orientation?: Partial<Record<ResponsiveSizeTier, ResponsiveOrientation>>;
 }
 export interface TestSuiteResult {
     suiteName: string;

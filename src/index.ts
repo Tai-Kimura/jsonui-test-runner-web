@@ -20,6 +20,14 @@ export { JsonUITestRunner, TestRunnerBuilder, TestRunnerConfig } from './runner/
 export { StateProvider, WindowStateProvider } from './runner/StateProvider';
 export { MockClient } from './runner/MockClient';
 export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
+export {
+  loadRunDefaults,
+  defaultOrientationForTier,
+  RUN_DEFAULTS_FILENAME,
+  SUPPORTED_SCHEMA_VERSION,
+  RunDefaultsLoad,
+  RunDefaultsMiss
+} from './runner/RunDefaults';
 export { applyLaunchConfig } from './runner/LaunchConfig';
 
 // Convenience function for creating test runners

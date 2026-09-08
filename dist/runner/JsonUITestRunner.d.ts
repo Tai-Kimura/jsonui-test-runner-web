@@ -3,7 +3,7 @@
  * Main test runner using Playwright
  */
 import { Page } from 'playwright';
-import { LoadedTest, ScreenTest, FlowTest, TestSuiteResult, ResponsiveThresholds } from '../models/types';
+import { LoadedTest, ScreenTest, FlowTest, TestSuiteResult, ResponsiveThresholds, RunDefaults } from '../models/types';
 import { StateProvider } from './StateProvider';
 /**
  * Configuration for the test runner
@@ -40,6 +40,14 @@ export interface TestRunnerConfig {
      * non-idempotently may not benefit.
      */
     caseRetries?: number;
+    /**
+     * Run-scoped defaults read from the installed bundle's
+     * `jsonui-test-run.json` (see `RunDefaults.loadRunDefaults`). `null` says
+     * the sidecar could not be read and is NOT the same as an empty table —
+     * a caller that folds the two together loses the only signal that
+     * separates "no default declared" from "installed by an older CLI".
+     */
+    runDefaults?: RunDefaults | null;
     /** Provider for `state` assertions and `state` conditions */
     stateProvider?: StateProvider;
     /** Baseline directory for the `screenshot` assertion (default './baselines') */
@@ -107,6 +115,13 @@ export declare class JsonUITestRunner {
      */
     private trackedScreen;
     private currentCaseName;
+    /**
+     * The orientation the run asked for, after resolving file > run default;
+     * a `setOrientation` step overwrites it for the cases that follow, which
+     * is what makes it the DECLARED value rather than the configured one.
+     * Undefined means nothing declared an orientation at all.
+     */
+    private declaredOrientation;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
      * Make sure the CURRENT document has the window.open spy too — the runner
@@ -157,6 +172,39 @@ export declare class JsonUITestRunner {
      * Reads the live size on every evaluation so setViewport/setOrientation
      * changes are picked up immediately.
      */
+    /**
+     * Resolve and apply the orientation this run starts in, once.
+     *
+     * Order: the file's own `orientation`, else the run default for the tier
+     * this viewport falls in. A `setOrientation` step later in the run beats
+     * both, which is why this only runs at the start.
+     *
+     * The tier is resolved from the LIVE viewport rather than from anything
+     * installed, because the whole reason the default is a table is that one
+     * bundle runs on several form factors.
+     */
+    private applyRunOrientation;
+    /**
+     * The orientation the page is in RIGHT NOW, asked of the viewport.
+     *
+     * Deliberately not derived from `declaredOrientation`: the pair exists to
+     * record a disagreement, and a derived value can never disagree.
+     */
+    private observeOrientation;
+    /**
+     * Stamp a result that actually RAN with the orientation pair.
+     *
+     * Skipped rows are not stamped, for the same reason they carry no
+     * `attempts`: a case that never executed has no orientation it ran in, and
+     * a viewport reading taken at skip time would look like one.
+     *
+     * EVERY result goes through here, skipped ones included, so that this
+     * guard is what makes that true. Routing the skipped returns around it
+     * left the guard unreachable: the arms named for it stayed green with the
+     * guard deleted, which is a test asserting an outcome the code it names
+     * does not produce. Measured with a mutation, not reasoned about.
+     */
+    private withOrientation;
     private currentSizeMatches;
     /** Instant visibility check (no polling) used by conditions */
     private isInstantlyVisible;

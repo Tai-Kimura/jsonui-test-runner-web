@@ -2,7 +2,7 @@
  * JsonUI Test Runner - Web Driver
  * Serializes run results to the standardized results JSON (schemas/results.schema.json)
  */
-import { FailureReason, SkipReason, TestSuiteResult } from '../models/types';
+import { FailureReason, ResponsiveOrientation, SkipReason, TestSuiteResult } from '../models/types';
 export interface ResultsJson {
     format: 'jsonui-test-results';
     version: 1;
@@ -29,6 +29,16 @@ export interface ResultsJsonResult {
     attempts?: number;
     /** True when the case passed but needed more than one attempt; only emitted on such passes */
     flaky?: boolean;
+    /** The orientation the case asked for (step > file > run default); absent when nothing declared one */
+    declaredOrientation?: ResponsiveOrientation;
+    /**
+     * The orientation the case actually ran in, read from the viewport.
+     * Emitted alongside `declaredOrientation` rather than instead of it: the
+     * two can disagree (on Android `'portrait'` restores the natural
+     * orientation, which is landscape on some tablets), and one field would
+     * record the request while assuming it was honoured.
+     */
+    observedOrientation?: ResponsiveOrientation;
     durationMs: number;
 }
 export declare class ResultsWriter {

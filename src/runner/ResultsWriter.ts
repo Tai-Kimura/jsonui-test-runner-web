@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { FailureReason, SkipReason, TestSuiteResult } from '../models/types';
+import { FailureReason, ResponsiveOrientation, SkipReason, TestSuiteResult } from '../models/types';
 
 // MARK: - Results JSON shape (results.schema.json)
 
@@ -37,6 +37,16 @@ export interface ResultsJsonResult {
   attempts?: number;
   /** True when the case passed but needed more than one attempt; only emitted on such passes */
   flaky?: boolean;
+  /** The orientation the case asked for (step > file > run default); absent when nothing declared one */
+  declaredOrientation?: ResponsiveOrientation;
+  /**
+   * The orientation the case actually ran in, read from the viewport.
+   * Emitted alongside `declaredOrientation` rather than instead of it: the
+   * two can disagree (on Android `'portrait'` restores the natural
+   * orientation, which is landscape on some tablets), and one field would
+   * record the request while assuming it was honoured.
+   */
+  observedOrientation?: ResponsiveOrientation;
   durationMs: number;
 }
 
@@ -90,6 +100,17 @@ export class ResultsWriter {
           }
           if (result.warnings !== undefined && result.warnings.length > 0) {
             entry.warnings = result.warnings;
+          }
+          // Both halves of the orientation pair, or neither — a row carrying
+          // only the request would read as agreement rather than as a missing
+          // measurement, which is the shape this pair exists to prevent.
+          if (!result.skipped) {
+            if (result.declaredOrientation !== undefined) {
+              entry.declaredOrientation = result.declaredOrientation;
+            }
+            if (result.observedOrientation !== undefined) {
+              entry.observedOrientation = result.observedOrientation;
+            }
           }
           if (!result.skipped && result.attempts !== undefined) {
             entry.attempts = result.attempts;

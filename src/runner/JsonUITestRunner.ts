@@ -18,9 +18,13 @@ import {
   WhenCondition,
   ResponsiveCondition,
   ResponsiveThresholds,
+  ResponsiveOrientation,
+  RunDefaults,
   platformIncludes,
   matchesResponsive,
   resolveViewportSize,
+  deriveOrientation,
+  resolveSizeTier,
   unknownConditionKeys,
   deepEquals,
   isAction,
@@ -33,6 +37,7 @@ import { TestLoader } from './TestLoader';
 import { StateProvider } from './StateProvider';
 import { MockClient } from './MockClient';
 import { screenIdFromLayout } from './screenIdentity';
+import { defaultOrientationForTier } from './RunDefaults';
 
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
@@ -72,6 +77,14 @@ export interface TestRunnerConfig {
    * non-idempotently may not benefit.
    */
   caseRetries?: number;
+  /**
+   * Run-scoped defaults read from the installed bundle's
+   * `jsonui-test-run.json` (see `RunDefaults.loadRunDefaults`). `null` says
+   * the sidecar could not be read and is NOT the same as an empty table —
+   * a caller that folds the two together loses the only signal that
+   * separates "no default declared" from "installed by an older CLI".
+   */
+  runDefaults?: RunDefaults | null;
   /** Provider for `state` assertions and `state` conditions */
   stateProvider?: StateProvider;
   /** Baseline directory for the `screenshot` assertion (default './baselines') */
@@ -116,7 +129,7 @@ export interface TestRunnerConfig {
   screenReadyTimeout?: number;
 }
 
-type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken';
+type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken' | 'runDefaults';
 type ResolvedConfig =
   Required<Omit<TestRunnerConfig, OptionalConfigKeys | 'responsive'>> &
   Pick<TestRunnerConfig, OptionalConfigKeys> &
@@ -190,6 +203,13 @@ export class JsonUITestRunner {
    */
   private trackedScreen: string | undefined;
   private currentCaseName = '';
+  /**
+   * The orientation the run asked for, after resolving file > run default;
+   * a `setOrientation` step overwrites it for the cases that follow, which
+   * is what makes it the DECLARED value rather than the configured one.
+   * Undefined means nothing declared an orientation at all.
+   */
+  private declaredOrientation: ResponsiveOrientation | undefined;
 
   constructor(page: Page, config: TestRunnerConfig = {}) {
     this.config = {
@@ -276,6 +296,12 @@ export class JsonUITestRunner {
         totalDurationMs: 0
       };
     }
+
+    // Orientation is applied BEFORE the readiness gate and setup: a screen
+    // that renders at one size and is then rotated has already made its
+    // layout decisions, so a run that rotates afterwards is not the run the
+    // file asked for.
+    await this.applyRunOrientation(test.orientation);
 
     // Artifact identity for this file (setup/teardown captures carry the
     // phase name until runTestCase overwrites the case name).
@@ -393,6 +419,10 @@ export class JsonUITestRunner {
     const warnings: string[] = [];
     let flowError: string | null = null;
 
+    // Same ordering argument as the screen path: rotate before anything
+    // renders, not after.
+    await this.applyRunOrientation(test.orientation);
+
     // A flow acts as a single case for artifact identity purposes.
     this.currentTestName = test.metadata.name;
     this.currentCaseName = 'flow';
@@ -454,7 +484,7 @@ export class JsonUITestRunner {
       }
     } while (flowError !== null && flowAttempts < maxAttempts);
 
-    results.push({
+    results.push(await this.withOrientation({
       testName: test.metadata.name,
       caseName: 'flow',
       passed: flowError === null,
@@ -462,7 +492,7 @@ export class JsonUITestRunner {
       warnings: warnings.length > 0 ? warnings : undefined,
       attempts: flowAttempts,
       durationMs: Date.now() - startTime
-    });
+    }));
 
     // Run teardown (guaranteed)
     if (test.teardown) {
@@ -528,13 +558,13 @@ export class JsonUITestRunner {
     // Check if skipped
     if (testCase.skip) {
       this.log(`Skipping case: ${testCase.name}`);
-      return {
+      return this.withOrientation({
         testName,
         caseName: testCase.name,
         passed: true,
         skipped: true,
         durationMs: 0
-      };
+      });
     }
 
     // Check platform compatibility. Deterministic skip-reason rule: platform is
@@ -543,27 +573,27 @@ export class JsonUITestRunner {
     // viewport-dependent one, keeping reports stable across viewport sizes).
     if (!platformIncludes(testCase.platform, this.config.platform)) {
       this.log(`Skipping case ${testCase.name} - platform mismatch`);
-      return {
+      return this.withOrientation({
         testName,
         caseName: testCase.name,
         passed: true,
         skipped: true,
         skipReason: 'platform',
         durationMs: 0
-      };
+      });
     }
 
     // Check responsive compatibility (case-level gate, parallel to platform)
     if (testCase.responsive !== undefined && !(await this.currentSizeMatches(testCase.responsive))) {
       this.log(`Skipping case ${testCase.name} - responsive mismatch`);
-      return {
+      return this.withOrientation({
         testName,
         caseName: testCase.name,
         passed: true,
         skipped: true,
         skipReason: 'responsive',
         durationMs: 0
-      };
+      });
     }
 
     this.log(`Running case: ${testCase.name}`);
@@ -574,13 +604,13 @@ export class JsonUITestRunner {
 
     try {
       await this.executeSteps(processedCase.steps, warnings);
-      return {
+      return this.withOrientation({
         testName,
         caseName: testCase.name,
         passed: true,
         warnings: warnings.length > 0 ? warnings : undefined,
         durationMs: Date.now() - startTime
-      };
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.log(`Case ${testCase.name} failed: ${errorMessage}`);
@@ -589,7 +619,7 @@ export class JsonUITestRunner {
         await this.takeScreenshot(`failure_${testName}_${testCase.name}`);
       }
 
-      return {
+      return this.withOrientation({
         testName,
         caseName: testCase.name,
         passed: false,
@@ -597,7 +627,7 @@ export class JsonUITestRunner {
         failureReason: classifyFailure(error),
         warnings: warnings.length > 0 ? warnings : undefined,
         durationMs: Date.now() - startTime
-      };
+      });
     }
   }
 
@@ -654,6 +684,13 @@ export class JsonUITestRunner {
 
     if (isAction(step)) {
       await this.actionExecutor.execute(step);
+      // A `setOrientation` step is the top of the precedence chain, so what
+      // the run DECLARES changes here. Recorded from the step rather than by
+      // re-measuring: this half of the pair is the request, and measuring it
+      // would collapse it onto the observed half.
+      if (step.action === 'setOrientation' && step.orientation) {
+        this.declaredOrientation = step.orientation;
+      }
     } else if (isAssertion(step)) {
       await this.assertionExecutor.execute(step);
       // Drain warnings produced by the assertion (e.g. baseline created)
@@ -775,6 +812,85 @@ export class JsonUITestRunner {
    * Reads the live size on every evaluation so setViewport/setOrientation
    * changes are picked up immediately.
    */
+  /**
+   * Resolve and apply the orientation this run starts in, once.
+   *
+   * Order: the file's own `orientation`, else the run default for the tier
+   * this viewport falls in. A `setOrientation` step later in the run beats
+   * both, which is why this only runs at the start.
+   *
+   * The tier is resolved from the LIVE viewport rather than from anything
+   * installed, because the whole reason the default is a table is that one
+   * bundle runs on several form factors.
+   */
+  private async applyRunOrientation(declared: ResponsiveOrientation | undefined): Promise<void> {
+    const size = await resolveViewportSize(this.page);
+    const tier = resolveSizeTier(size.width, this.config.responsive);
+    const wanted = declared ?? defaultOrientationForTier(this.config.runDefaults ?? null, tier);
+    this.declaredOrientation = wanted;
+    if (!wanted) {
+      return;
+    }
+    if (deriveOrientation(size) === wanted) {
+      return;
+    }
+    const viewport = this.page.viewportSize();
+    if (!viewport) {
+      // A viewport: null context sizes itself to the window; there is no
+      // viewport to swap. Say so rather than silently recording a declared
+      // orientation the run never applied — `observedOrientation` will
+      // disagree, and this line is what explains the disagreement.
+      this.log(
+        `[orientation] declared '${wanted}' but no viewport is set ` +
+        '(viewport: null context) - not applied'
+      );
+      return;
+    }
+    this.log(`[orientation] applying run orientation '${wanted}'`);
+    await this.page.setViewportSize({ width: viewport.height, height: viewport.width });
+  }
+
+  /**
+   * The orientation the page is in RIGHT NOW, asked of the viewport.
+   *
+   * Deliberately not derived from `declaredOrientation`: the pair exists to
+   * record a disagreement, and a derived value can never disagree.
+   */
+  private async observeOrientation(): Promise<ResponsiveOrientation | undefined> {
+    try {
+      return deriveOrientation(await resolveViewportSize(this.page));
+    } catch {
+      // A closed page cannot be measured. Absent reads as "not reported",
+      // which is true, rather than as an orientation nobody observed.
+      return undefined;
+    }
+  }
+
+  /**
+   * Stamp a result that actually RAN with the orientation pair.
+   *
+   * Skipped rows are not stamped, for the same reason they carry no
+   * `attempts`: a case that never executed has no orientation it ran in, and
+   * a viewport reading taken at skip time would look like one.
+   *
+   * EVERY result goes through here, skipped ones included, so that this
+   * guard is what makes that true. Routing the skipped returns around it
+   * left the guard unreachable: the arms named for it stayed green with the
+   * guard deleted, which is a test asserting an outcome the code it names
+   * does not produce. Measured with a mutation, not reasoned about.
+   */
+  private async withOrientation(result: TestResult): Promise<TestResult> {
+    if (result.skipped) {
+      return result;
+    }
+    const observed = await this.observeOrientation();
+    return {
+      ...result,
+      declaredOrientation: this.declaredOrientation,
+      observedOrientation: observed
+    };
+  }
+
   private async currentSizeMatches(condition: ResponsiveCondition): Promise<boolean> {
     const size = await resolveViewportSize(this.page);
     return matchesResponsive(condition, size, this.config.responsive);

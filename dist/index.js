@@ -20,7 +20,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.applyLaunchConfig = exports.ResultsWriter = exports.MockClient = exports.WindowStateProvider = exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
+exports.applyLaunchConfig = exports.SUPPORTED_SCHEMA_VERSION = exports.RUN_DEFAULTS_FILENAME = exports.defaultOrientationForTier = exports.loadRunDefaults = exports.ResultsWriter = exports.MockClient = exports.WindowStateProvider = exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
 exports.createRunner = createRunner;
 // Models
 __exportStar(require("./models/types"), exports);
@@ -42,6 +42,11 @@ var MockClient_1 = require("./runner/MockClient");
 Object.defineProperty(exports, "MockClient", { enumerable: true, get: function () { return MockClient_1.MockClient; } });
 var ResultsWriter_1 = require("./runner/ResultsWriter");
 Object.defineProperty(exports, "ResultsWriter", { enumerable: true, get: function () { return ResultsWriter_1.ResultsWriter; } });
+var RunDefaults_1 = require("./runner/RunDefaults");
+Object.defineProperty(exports, "loadRunDefaults", { enumerable: true, get: function () { return RunDefaults_1.loadRunDefaults; } });
+Object.defineProperty(exports, "defaultOrientationForTier", { enumerable: true, get: function () { return RunDefaults_1.defaultOrientationForTier; } });
+Object.defineProperty(exports, "RUN_DEFAULTS_FILENAME", { enumerable: true, get: function () { return RunDefaults_1.RUN_DEFAULTS_FILENAME; } });
+Object.defineProperty(exports, "SUPPORTED_SCHEMA_VERSION", { enumerable: true, get: function () { return RunDefaults_1.SUPPORTED_SCHEMA_VERSION; } });
 var LaunchConfig_1 = require("./runner/LaunchConfig");
 Object.defineProperty(exports, "applyLaunchConfig", { enumerable: true, get: function () { return LaunchConfig_1.applyLaunchConfig; } });
 // Convenience function for creating test runners
