@@ -44,12 +44,34 @@ export class TestLoader {
   }
 
   /**
-   * Load a test from a file path
+   * Load a test from a file path.
+   *
+   * This is the TOP-LEVEL entry: the file it loads owns the base that
+   * relative references and step-level paths resolve against. A screen test
+   * run on its own resolves against its own directory; a flow resolves
+   * against the flow's. Reading a file BECAUSE a flow referenced it is not
+   * a load in this sense — see `readTestFile`.
    */
   static loadFromFile(filePath: string): LoadedTest {
     const absolutePath = path.resolve(filePath);
     // Store base path for file reference resolution
     this.basePath = path.dirname(absolutePath);
+    return this.readTestFile(absolutePath);
+  }
+
+  /**
+   * Read and parse a test file WITHOUT touching the base.
+   *
+   * `resolveFileReference` used to go through `loadFromFile`, which set
+   * `basePath` unconditionally — so the first `file:` step of a flow moved
+   * the base from `tests/flows/` to `tests/screens/<first>/`, and the second
+   * step (a different screen) looked under `tests/screens/screens/<second>/`
+   * and was "not found". Referencing the same screen twice passed by
+   * accident (`<base>/<ref>.test.json` existed), which is why the defect
+   * only surfaced when a flow crossed two screens. Calling `setBasePath`
+   * right before the flow did not help: the first reference overwrote it.
+   */
+  private static readTestFile(absolutePath: string): LoadedTest {
     const content = fs.readFileSync(absolutePath, 'utf-8');
     return this.parseTest(content, absolutePath);
   }
@@ -168,7 +190,10 @@ export class TestLoader {
    */
   static resolveFileReference(fileRef: string): ScreenTest {
     const resolvedPath = this.resolveFileReferenceURL(fileRef);
-    const loadedTest = this.loadFromFile(resolvedPath);
+    // The base stays at the flow's directory: a referenced screen test's
+    // relative step paths (addMedia fixtures) resolve against the FLOW, the
+    // file the run was started from, not against the screen's own folder.
+    const loadedTest = this.readTestFile(resolvedPath);
 
     if (loadedTest.type !== 'screen') {
       throw new NotAScreenTestError(fileRef);

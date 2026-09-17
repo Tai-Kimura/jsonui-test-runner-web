@@ -25,9 +25,28 @@ export declare class TestLoader {
      */
     static getBasePath(): string | null;
     /**
-     * Load a test from a file path
+     * Load a test from a file path.
+     *
+     * This is the TOP-LEVEL entry: the file it loads owns the base that
+     * relative references and step-level paths resolve against. A screen test
+     * run on its own resolves against its own directory; a flow resolves
+     * against the flow's. Reading a file BECAUSE a flow referenced it is not
+     * a load in this sense — see `readTestFile`.
      */
     static loadFromFile(filePath: string): LoadedTest;
+    /**
+     * Read and parse a test file WITHOUT touching the base.
+     *
+     * `resolveFileReference` used to go through `loadFromFile`, which set
+     * `basePath` unconditionally — so the first `file:` step of a flow moved
+     * the base from `tests/flows/` to `tests/screens/<first>/`, and the second
+     * step (a different screen) looked under `tests/screens/screens/<second>/`
+     * and was "not found". Referencing the same screen twice passed by
+     * accident (`<base>/<ref>.test.json` existed), which is why the defect
+     * only surfaced when a flow crossed two screens. Calling `setBasePath`
+     * right before the flow did not help: the first reference overwrote it.
+     */
+    private static readTestFile;
     /**
      * Load a test from JSON string
      */
