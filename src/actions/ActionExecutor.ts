@@ -10,6 +10,7 @@ import * as path from 'path';
 import { Page, Locator } from 'playwright';
 import { TestStep, deriveOrientation } from '../models/types';
 import { TestLoader } from '../runner/TestLoader';
+import { isInViewport } from '../visibility';
 
 export class ActionExecutor {
   private page: Page;
@@ -522,9 +523,11 @@ export class ActionExecutor {
     const timeout = step.timeout ?? 20000;
     const target = this.getLocator(id).first();
 
-    const isTargetVisible = async (): Promise<boolean> => {
-      return (await target.count()) > 0 && await target.isVisible();
-    };
+    // The same predicate as `visible` (src/visibility.ts): stop when some of
+    // the target is in the viewport. isVisible() alone is true for an element
+    // laid out below a scroll container's fold, so the search stopped before
+    // scrolling and the next `visible` on the target failed.
+    const isTargetVisible = async (): Promise<boolean> => isInViewport(target);
 
     if (await isTargetVisible()) {
       return;

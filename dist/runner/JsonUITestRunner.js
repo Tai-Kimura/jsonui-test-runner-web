@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TestRunnerBuilder = exports.JsonUITestRunner = void 0;
 const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
+const visibility_1 = require("../visibility");
 const types_1 = require("../models/types");
 const failureReason_1 = require("./failureReason");
 const TestLoader_1 = require("./TestLoader");
@@ -705,13 +706,10 @@ class JsonUITestRunner {
         const size = await (0, types_1.resolveViewportSize)(this.page);
         return (0, types_1.matchesResponsive)(condition, size, this.config.responsive);
     }
-    /** Instant visibility check (no polling) used by conditions */
+    /** Instant visibility check (no polling) used by `when` conditions — the
+     * same predicate as the `visible` assert (src/visibility.ts). */
     async isInstantlyVisible(id) {
-        const element = this.page.locator(`#${id}`);
-        if (await element.count() === 0) {
-            return false;
-        }
-        return element.first().isVisible();
+        return (0, visibility_1.isInViewport)(this.page.locator(`#${id}`));
     }
     async executeFlowSteps(steps, warnings) {
         for (let index = 0; index < steps.length; index++) {

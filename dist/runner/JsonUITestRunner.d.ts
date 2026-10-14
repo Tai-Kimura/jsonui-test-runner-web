@@ -206,7 +206,8 @@ export declare class JsonUITestRunner {
      */
     private withOrientation;
     private currentSizeMatches;
-    /** Instant visibility check (no polling) used by conditions */
+    /** Instant visibility check (no polling) used by `when` conditions — the
+     * same predicate as the `visible` assert (src/visibility.ts). */
     private isInstantlyVisible;
     private executeFlowSteps;
     /**

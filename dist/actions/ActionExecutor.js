@@ -44,6 +44,7 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const types_1 = require("../models/types");
 const TestLoader_1 = require("../runner/TestLoader");
+const visibility_1 = require("../visibility");
 class ActionExecutor {
     constructor(page, defaultTimeout = 5000, variables = {}) {
         this.page = page;
@@ -489,9 +490,11 @@ class ActionExecutor {
         const direction = step.direction ?? 'down';
         const timeout = step.timeout ?? 20000;
         const target = this.getLocator(id).first();
-        const isTargetVisible = async () => {
-            return (await target.count()) > 0 && await target.isVisible();
-        };
+        // The same predicate as `visible` (src/visibility.ts): stop when some of
+        // the target is in the viewport. isVisible() alone is true for an element
+        // laid out below a scroll container's fold, so the search stopped before
+        // scrolling and the next `visible` on the target failed.
+        const isTargetVisible = async () => (0, visibility_1.isInViewport)(target);
         if (await isTargetVisible()) {
             return;
         }

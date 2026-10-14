@@ -79,6 +79,8 @@ export declare class AssertionExecutor {
      * at the app or the test: the navigation did not happen.
      */
     private screenDiagnosis;
+    /** In the viewport (src/visibility.ts): shown, and some of it inside the
+     * window's viewport and every clipping ancestor — not merely laid out. */
     private assertVisible;
     private assertNotVisible;
     private assertEnabled;

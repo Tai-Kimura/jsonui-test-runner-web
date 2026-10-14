@@ -48,6 +48,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssertionExecutor = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const visibility_1 = require("../visibility");
 const pngjs_1 = require("pngjs");
 const pixelmatch_1 = __importDefault(require("pixelmatch"));
 const types_1 = require("../models/types");
@@ -202,26 +203,29 @@ class AssertionExecutor {
         }
         return `previous-screen-only: '${screenId}' is not displayed; displayed screens are ${JSON.stringify(present)}`;
     }
+    /** In the viewport (src/visibility.ts): shown, and some of it inside the
+     * window's viewport and every clipping ancestor — not merely laid out. */
     async assertVisible(step, timeout) {
         const id = this.requireId(step, 'visible');
         await this.pollUntil(timeout, async () => {
-            const element = this.getLocator(id).first();
+            const element = this.getLocator(id);
             if (await element.count() === 0) {
                 return `Element '${id}' should be visible but it does not exist`;
             }
-            return await element.isVisible()
+            return await (0, visibility_1.isInViewport)(element)
                 ? null
-                : `Element '${id}' should be visible but it is not`;
+                : `Element '${id}' should be visible but it is not in the viewport`;
         });
     }
     async assertNotVisible(step, timeout) {
         const id = this.requireId(step, 'notVisible');
         await this.pollUntil(timeout, async () => {
+            // Exactly not `visible`: absent, hidden, or nothing of it in the viewport.
             const element = this.getLocator(id);
             if (await element.count() === 0) {
                 return null;
             }
-            return await element.first().isVisible()
+            return await (0, visibility_1.isInViewport)(element)
                 ? `Element '${id}' should not be visible but it is`
                 : null;
         });

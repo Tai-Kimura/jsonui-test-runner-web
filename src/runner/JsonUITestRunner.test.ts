@@ -7,6 +7,7 @@ import { Page } from 'playwright';
 import { JsonUITestRunner, TestRunnerConfig } from './JsonUITestRunner';
 import { ResultsWriter } from './ResultsWriter';
 import { FlowTest, ScreenTest, TestCase, WhenCondition } from '../models/types';
+import type { Rect } from '../visibility';
 
 interface FakePageOptions {
   /** `data-screen` values present on the page. Default: the one the fixture test declares. */
@@ -15,6 +16,8 @@ interface FakePageOptions {
   markerVisible?: boolean;
   /** Records every `waitForLoadState` argument, so a test can prove the gate was NOT used. */
   loadStates?: string[];
+  /** Elements by id (`#id`): their box and the rectangles that clip it, as the page would report. */
+  elements?: Record<string, { rect: Rect; clips: Rect[]; visible?: boolean }>;
 }
 
 /**
@@ -46,6 +49,17 @@ function makeFakePage(
           count: async () => (present ? 1 : 0),
           first: () => ({ isVisible: async () => options.markerVisible ?? true })
         };
+      }
+      const byId = /^#(.+)$/.exec(selector);
+      if (byId && options.elements) {
+        const el = options.elements[byId[1]];
+        const self: any = {
+          count: async () => (el ? 1 : 0),
+          first: () => self,
+          isVisible: async () => el?.visible ?? true,
+          evaluate: async () => ({ rect: el?.rect, clips: el?.clips })
+        };
+        return self;
       }
       if (selector === '[data-screen]') {
         return {
@@ -201,6 +215,43 @@ describe('skipReason emission', () => {
 describe('step-level conditions', () => {
   // 'addMedia' always throws on web, so the case only passes if the step was skipped
   const throwingStep = { action: 'addMedia' as const };
+
+  // `when: { visible / notVisible }` uses the `visible` assert's predicate —
+  // in the viewport (src/visibility.ts), not merely laid out. A 200px
+  // scrolling container; `inside` at y 0, `below` at y 580 (inside the window,
+  // outside the container).
+  const windowRect = { left: 0, top: 0, right: 1280, bottom: 720 };
+  const container = { left: 0, top: 0, right: 200, bottom: 200 };
+  const elements = {
+    inside: { rect: { left: 0, top: 0, right: 200, bottom: 20 }, clips: [windowRect, container] },
+    below: { rect: { left: 0, top: 580, right: 200, bottom: 600 }, clips: [windowRect, container] }
+  };
+
+  it('skips a when.visible step whose element is laid out below the scroll fold', async () => {
+    const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { visible: 'below' } }] }])
+    );
+    expect(suite.results[0].passed).toBe(true);
+  });
+
+  it('runs a when.visible step whose element is in the viewport', async () => {
+    const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { visible: 'inside' } }] }])
+    );
+    expect(suite.results[0].passed).toBe(false);
+    expect(suite.results[0].error).toContain('addMedia');
+  });
+
+  it('runs a when.notVisible step whose element is laid out below the scroll fold', async () => {
+    const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { notVisible: 'below' } }] }])
+    );
+    expect(suite.results[0].passed).toBe(false);
+    expect(suite.results[0].error).toContain('addMedia');
+  });
 
   it('skips a step whose when.responsive is unmet', async () => {
     const runner = makeRunner({ width: 375, height: 812 });

@@ -10,6 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isInViewport } from '../visibility';
 import { Page, Locator } from 'playwright';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
@@ -206,27 +207,30 @@ export class AssertionExecutor {
     return `previous-screen-only: '${screenId}' is not displayed; displayed screens are ${JSON.stringify(present)}`;
   }
 
+  /** In the viewport (src/visibility.ts): shown, and some of it inside the
+   * window's viewport and every clipping ancestor — not merely laid out. */
   private async assertVisible(step: TestStep, timeout: number): Promise<void> {
     const id = this.requireId(step, 'visible');
     await this.pollUntil(timeout, async () => {
-      const element = this.getLocator(id).first();
+      const element = this.getLocator(id);
       if (await element.count() === 0) {
         return `Element '${id}' should be visible but it does not exist`;
       }
-      return await element.isVisible()
+      return await isInViewport(element)
         ? null
-        : `Element '${id}' should be visible but it is not`;
+        : `Element '${id}' should be visible but it is not in the viewport`;
     });
   }
 
   private async assertNotVisible(step: TestStep, timeout: number): Promise<void> {
     const id = this.requireId(step, 'notVisible');
     await this.pollUntil(timeout, async () => {
+      // Exactly not `visible`: absent, hidden, or nothing of it in the viewport.
       const element = this.getLocator(id);
       if (await element.count() === 0) {
         return null;
       }
-      return await element.first().isVisible()
+      return await isInViewport(element)
         ? `Element '${id}' should not be visible but it is`
         : null;
     });

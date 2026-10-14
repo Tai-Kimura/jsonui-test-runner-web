@@ -6,6 +6,7 @@
 import { Page } from 'playwright';
 import { ActionExecutor } from '../actions/ActionExecutor';
 import { AssertionExecutor } from '../assertions/AssertionExecutor';
+import { isInViewport } from '../visibility';
 import {
   LoadedTest,
   ScreenTest,
@@ -896,13 +897,10 @@ export class JsonUITestRunner {
     return matchesResponsive(condition, size, this.config.responsive);
   }
 
-  /** Instant visibility check (no polling) used by conditions */
+  /** Instant visibility check (no polling) used by `when` conditions — the
+   * same predicate as the `visible` assert (src/visibility.ts). */
   private async isInstantlyVisible(id: string): Promise<boolean> {
-    const element = this.page.locator(`#${id}`);
-    if (await element.count() === 0) {
-      return false;
-    }
-    return element.first().isVisible();
+    return isInViewport(this.page.locator(`#${id}`));
   }
 
   private async executeFlowSteps(steps: FlowTestStep[], warnings: string[]): Promise<void> {
