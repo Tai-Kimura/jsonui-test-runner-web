@@ -145,3 +145,76 @@ describe('selectOption precedence', () => {
     expect(calls).toEqual([]);
   });
 });
+
+/**
+ * scrollUntilVisible's scroll surface. The fake page models one 200px box:
+ * the target is a 20px row at y 580 inside it, and whatever the driver scrolls
+ * (the target's ancestor, a named container, or the window) moves the row up
+ * by the scrolled amount only if that is the box that holds it.
+ */
+function makeScrollPage(opts: { ancestorScrolls: boolean; containerHoldsTarget?: boolean }) {
+  const scrolled = { ancestor: 0, container: 0, window: 0 };
+  const box = { left: 0, top: 0, right: 200, bottom: 200 };
+  const win = { left: 0, top: 0, right: 1280, bottom: 720 };
+  const offset = () => scrolled.ancestor + (opts.containerHoldsTarget ? scrolled.container : 0);
+  const target: any = {
+    count: async () => 1,
+    first: () => target,
+    isVisible: async () => true,
+    // geometry() calls evaluate(fn); the ancestor scroll calls evaluate(fn, direction)
+    evaluate: async (_fn: unknown, dir?: string) => {
+      if (dir === undefined) {
+        const top = 580 - offset();
+        return { rect: { left: 0, top, right: 200, bottom: top + 20 }, clips: [win, box] };
+      }
+      if (!opts.ancestorScrolls) return null;
+      scrolled.ancestor += dir === 'down' ? 140 : -140;
+      return `${scrolled.ancestor},0`;
+    }
+  };
+  const container: any = {
+    count: async () => 1,
+    first: () => container,
+    evaluate: async (_fn: unknown, dir: string) => {
+      scrolled.container += dir === 'down' ? 140 : -140;
+      return `${scrolled.container},0`;
+    }
+  };
+  const page = {
+    locator: (sel: string) => (sel === '#vp_scroll' ? container : target),
+    evaluate: async (_fn: unknown, dir: string) => {
+      scrolled.window += dir === 'down' ? 504 : -504;
+      return `${scrolled.window},0`;
+    },
+    waitForTimeout: async () => undefined
+  };
+  return { page: page as unknown as Page, scrolled };
+}
+
+describe('scrollUntilVisible surface', () => {
+  it('without a container, scrolls the target\'s nearest scrolling ancestor, not the window', async () => {
+    const { page, scrolled } = makeScrollPage({ ancestorScrolls: true });
+    await new ActionExecutor(page).execute({ action: 'scrollUntilVisible', id: 'vp_tail', timeout: 2000 });
+    expect(scrolled.ancestor).toBeGreaterThan(0);
+    expect(scrolled.window).toBe(0);
+  });
+
+  it('a named container is scrolled as before, the ancestor search is not used', async () => {
+    const { page, scrolled } = makeScrollPage({ ancestorScrolls: true, containerHoldsTarget: true });
+    await new ActionExecutor(page).execute({ action: 'scrollUntilVisible', id: 'vp_tail', container: 'vp_scroll', timeout: 2000 });
+    expect(scrolled.container).toBeGreaterThan(0);
+    expect(scrolled.ancestor).toBe(0);
+    expect(scrolled.window).toBe(0);
+  });
+
+  it('with nothing above the target that scrolls, falls back to the window', async () => {
+    const { page, scrolled } = makeScrollPage({ ancestorScrolls: false });
+    // The window does not hold the row in this fake, so the search ends
+    // without it — what matters is which surface was tried.
+    await expect(
+      new ActionExecutor(page).execute({ action: 'scrollUntilVisible', id: 'vp_tail', timeout: 500 })
+    ).rejects.toThrow();
+    expect(scrolled.window).not.toBe(0);
+    expect(scrolled.ancestor).toBe(0);
+  });
+});
