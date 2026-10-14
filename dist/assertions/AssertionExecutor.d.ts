@@ -37,7 +37,8 @@ export declare class AssertionExecutor {
     /**
      * Poll `check` every POLL_INTERVAL_MS until it returns null (pass) or the timeout
      * elapses. `check` returns an error message string while the condition is unmet.
-     * The last error message is thrown on timeout.
+     * The last error message is thrown on timeout, followed by every reason seen
+     * while waiting when it changed (ReasonHistory) — one reason, no block.
      */
     private pollUntil;
     /**
