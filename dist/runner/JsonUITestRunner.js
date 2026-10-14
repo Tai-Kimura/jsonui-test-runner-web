@@ -611,6 +611,11 @@ class JsonUITestRunner {
                 return false;
             }
         }
+        if (condition.hidden !== undefined) {
+            if (!(await (0, visibility_1.isHidden)(this.page.locator(`#${condition.hidden}`)))) {
+                return false;
+            }
+        }
         if (condition.state !== undefined) {
             if (!this.config.stateProvider) {
                 throw new Error(`Cannot evaluate state condition '${condition.state.path}': no state provider configured`);

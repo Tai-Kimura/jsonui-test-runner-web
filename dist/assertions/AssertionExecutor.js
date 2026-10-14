@@ -84,6 +84,9 @@ class AssertionExecutor {
             case 'notVisible':
                 await this.assertNotVisible(step, timeout);
                 break;
+            case 'hidden':
+                await this.assertHidden(step, timeout);
+                break;
             case 'enabled':
                 await this.assertEnabled(step, timeout);
                 break;
@@ -236,6 +239,13 @@ class AssertionExecutor {
                 ? `Element '${id}' should not be visible but it is`
                 : null;
         });
+    }
+    async assertHidden(step, timeout) {
+        const id = this.requireId(step, 'hidden');
+        // Not drawn, wherever it is (src/visibility.ts isHidden). Unlike
+        // notVisible it does not pass for an element below the fold or under a
+        // dialog: those are drawn.
+        await this.pollUntil(timeout, async () => (await (0, visibility_1.isHidden)(this.getLocator(id))) ? null : `Element '${id}' should be hidden but it is shown`);
     }
     async assertEnabled(step, timeout) {
         const id = this.requireId(step, 'enabled');

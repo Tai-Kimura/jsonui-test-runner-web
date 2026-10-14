@@ -178,6 +178,8 @@ export interface WhenCondition {
     visible?: string;
     /** Instant check: element is currently absent or invisible */
     notVisible?: string;
+    /** Instant check: element is not drawn (absent, gone or invisible), wherever it is */
+    hidden?: string;
     /** Current platform matches (same matching rules as the step-level platform field) */
     platform?: PlatformTarget;
     /** Current size class / viewport size matches (resolved at runtime from the live viewport) */
@@ -336,7 +338,7 @@ export interface TestStep {
     orientation?: ResponsiveOrientation;
 }
 export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation' | 'emitHook';
-export type AssertionType = 'visible' | 'notVisible' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot' | 'openedUrl' | 'screen';
+export type AssertionType = 'visible' | 'notVisible' | 'hidden' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot' | 'openedUrl' | 'screen';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
 /** Why a skipped result was skipped; only set for gate-caused skips (results.schema.json skipReason) */

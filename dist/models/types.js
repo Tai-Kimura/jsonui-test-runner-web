@@ -29,6 +29,7 @@ exports.isInlineStep = isInlineStep;
 exports.KNOWN_CONDITION_KEYS = new Set([
     'visible',
     'notVisible',
+    'hidden',
     'platform',
     'responsive',
     'state'

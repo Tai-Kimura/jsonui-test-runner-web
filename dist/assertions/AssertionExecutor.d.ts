@@ -84,6 +84,7 @@ export declare class AssertionExecutor {
      * window's viewport and every clipping ancestor — not merely laid out. */
     private assertVisible;
     private assertNotVisible;
+    private assertHidden;
     private assertEnabled;
     private assertDisabled;
     private assertText;

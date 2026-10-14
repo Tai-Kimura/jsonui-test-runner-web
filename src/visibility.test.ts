@@ -1,4 +1,4 @@
-import { inViewport, isInViewport, shownPart, Rect } from './visibility';
+import { inViewport, isHidden, isInViewport, shownPart, Rect } from './visibility';
 
 // The measured shapes (2026-10-14, the conformance web host, Chromium): a
 // 200px `overflow: auto` container at the top of a 720px-tall window, with
@@ -65,5 +65,40 @@ describe('isInViewport', () => {
   it('reads the box and its clips from the page', async () => {
     expect(await isInViewport(fakeLocator({ count: 1, rect: label(0), clips: [windowRect, scroll] }))).toBe(true);
     expect(await isInViewport(fakeLocator({ count: 1, rect: label(580), clips: [windowRect, scroll] }))).toBe(false);
+  });
+});
+
+/** A Locator stand-in for isHidden: one fake element per entry, `drawn` being what checkVisibility answers. */
+function fakeElements(drawn: boolean[]) {
+  const els = drawn.map((d) => ({ checkVisibility: (_o?: unknown) => d }));
+  return {
+    count: async () => els.length,
+    evaluateAll: async (fn: (e: any[]) => unknown) => fn(els),
+  } as any;
+}
+
+describe('isHidden', () => {
+  it('is true for no element', async () => {
+    expect(await isHidden(fakeElements([]))).toBe(true);
+  });
+
+  it('is true when no matching element is drawn (display: none or visibility: hidden)', async () => {
+    expect(await isHidden(fakeElements([false]))).toBe(true);
+    expect(await isHidden(fakeElements([false, false]))).toBe(true);
+  });
+
+  it('is false when any matching element is drawn, wherever it is', async () => {
+    expect(await isHidden(fakeElements([true]))).toBe(false);
+    expect(await isHidden(fakeElements([false, true]))).toBe(false);
+  });
+
+  it('asks checkVisibility with visibilityProperty, not opacity', async () => {
+    let seen: any;
+    const loc = {
+      count: async () => 1,
+      evaluateAll: async (fn: (e: any[]) => unknown) => fn([{ checkVisibility: (o: any) => { seen = o; return true; } }]),
+    } as any;
+    await isHidden(loc);
+    expect(seen).toEqual({ visibilityProperty: true });
   });
 });

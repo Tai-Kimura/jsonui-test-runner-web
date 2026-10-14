@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { isInViewport } from '../visibility';
+import { isHidden, isInViewport } from '../visibility';
 import { ReasonHistory } from './reasonHistory';
 import { Page, Locator } from 'playwright';
 import { PNG } from 'pngjs';
@@ -73,6 +73,9 @@ export class AssertionExecutor {
         break;
       case 'notVisible':
         await this.assertNotVisible(step, timeout);
+        break;
+      case 'hidden':
+        await this.assertHidden(step, timeout);
         break;
       case 'enabled':
         await this.assertEnabled(step, timeout);
@@ -241,6 +244,16 @@ export class AssertionExecutor {
         ? `Element '${id}' should not be visible but it is`
         : null;
     });
+  }
+
+  private async assertHidden(step: TestStep, timeout: number): Promise<void> {
+    const id = this.requireId(step, 'hidden');
+    // Not drawn, wherever it is (src/visibility.ts isHidden). Unlike
+    // notVisible it does not pass for an element below the fold or under a
+    // dialog: those are drawn.
+    await this.pollUntil(timeout, async () =>
+      (await isHidden(this.getLocator(id))) ? null : `Element '${id}' should be hidden but it is shown`
+    );
   }
 
   private async assertEnabled(step: TestStep, timeout: number): Promise<void> {

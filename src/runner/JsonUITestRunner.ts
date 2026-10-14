@@ -6,7 +6,7 @@
 import { Page } from 'playwright';
 import { ActionExecutor } from '../actions/ActionExecutor';
 import { AssertionExecutor } from '../assertions/AssertionExecutor';
-import { isInViewport } from '../visibility';
+import { isHidden, isInViewport } from '../visibility';
 import {
   LoadedTest,
   ScreenTest,
@@ -791,6 +791,11 @@ export class JsonUITestRunner {
     }
     if (condition.notVisible !== undefined) {
       if (await this.isInstantlyVisible(condition.notVisible)) {
+        return false;
+      }
+    }
+    if (condition.hidden !== undefined) {
+      if (!(await isHidden(this.page.locator(`#${condition.hidden}`)))) {
         return false;
       }
     }

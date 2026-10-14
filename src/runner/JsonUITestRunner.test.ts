@@ -17,7 +17,7 @@ interface FakePageOptions {
   /** Records every `waitForLoadState` argument, so a test can prove the gate was NOT used. */
   loadStates?: string[];
   /** Elements by id (`#id`): their box and the rectangles that clip it, as the page would report. */
-  elements?: Record<string, { rect: Rect; clips: Rect[]; visible?: boolean }>;
+  elements?: Record<string, { rect: Rect; clips: Rect[]; visible?: boolean; drawn?: boolean }>;
 }
 
 /**
@@ -57,7 +57,9 @@ function makeFakePage(
           count: async () => (el ? 1 : 0),
           first: () => self,
           isVisible: async () => el?.visible ?? true,
-          evaluate: async () => ({ rect: el?.rect, clips: el?.clips })
+          evaluate: async () => ({ rect: el?.rect, clips: el?.clips }),
+          evaluateAll: async (fn: (els: any[]) => unknown) =>
+            fn(el ? [{ checkVisibility: () => el.drawn ?? true }] : [])
         };
         return self;
       }
@@ -239,6 +241,24 @@ describe('step-level conditions', () => {
     const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements });
     const suite = await runner.runScreenTest(
       makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { visible: 'inside' } }] }])
+    );
+    expect(suite.results[0].passed).toBe(false);
+    expect(suite.results[0].error).toContain('addMedia');
+  });
+
+  it('skips a when.hidden step whose element is drawn below the fold — drawn is not hidden', async () => {
+    const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { hidden: 'below' } }] }])
+    );
+    expect(suite.results[0].passed).toBe(true);
+  });
+
+  it('runs a when.hidden step whose element is not drawn (visibility: hidden / display: none)', async () => {
+    const notDrawn = { ...elements, gone: { ...elements.inside, drawn: false } };
+    const runner = makeRunner({ width: 1280, height: 720 }, {}, { elements: notDrawn });
+    const suite = await runner.runScreenTest(
+      makeScreenTest([{ name: 'gated', steps: [{ ...throwingStep, when: { hidden: 'gone' } }] }])
     );
     expect(suite.results[0].passed).toBe(false);
     expect(suite.results[0].error).toContain('addMedia');
