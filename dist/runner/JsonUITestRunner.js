@@ -155,9 +155,38 @@ class JsonUITestRunner {
         // phase name until runTestCase overwrites the case name).
         this.currentTestName = test.metadata.name;
         this.currentCaseName = 'setup';
+        if (test.caseIsolation === 'reopen') {
+            await this.runCasesReopened(test, results);
+        }
+        else {
+            await this.runCasesShared(test, results);
+        }
+        // Reset mock scenarios so state does not leak into the next test file.
+        if (test.mocks && this.mockClient) {
+            try {
+                await this.mockClient.reset();
+            }
+            catch (error) {
+                this.log(`Mock reset failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        return {
+            suiteName: test.metadata.name,
+            results,
+            totalDurationMs: Date.now() - startTime
+        };
+    }
+    /**
+     * `caseIsolation: 'shared'` (the default): the file opens the screen once,
+     * runs setup once, runs every case in that one page state, then teardown
+     * once. A case inherits whatever the previous case left — its scroll
+     * position, the page it navigated to — so the order of the cases matters.
+     */
+    async runCasesShared(test, results) {
         // Apply the file-level mock scenario set BEFORE the screen fetches, then reload
         // so the screen re-renders against the selected scenarios. (Scenario switching is
-        // per-file for screen tests; there is no per-case re-open — see plan §8.1.)
+        // per-file for screen tests; there is no per-case re-open unless the file
+        // declares caseIsolation: 'reopen' — see plan §8.1.)
         if (test.mocks) {
             this.log('Applying mock scenarios and reloading...');
             await this.requireMockClient('mocks').scenarioSet(test.mocks);
@@ -200,12 +229,8 @@ class JsonUITestRunner {
         if (test.teardown) {
             this.log('Running teardown...');
             this.currentCaseName = 'teardown';
-            try {
-                await this.executeSteps(test.teardown, []);
-            }
-            catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                this.log(`Teardown failed: ${message}`);
+            const message = await this.runTeardown(test.teardown);
+            if (message !== null) {
                 results.push({
                     testName: test.metadata.name,
                     caseName: 'teardown',
@@ -217,20 +242,126 @@ class JsonUITestRunner {
                 });
             }
         }
-        // Reset mock scenarios so state does not leak into the next test file.
-        if (test.mocks && this.mockClient) {
-            try {
-                await this.mockClient.reset();
+    }
+    /**
+     * `caseIsolation: 'reopen'`: every case that runs starts from a freshly
+     * opened screen. Before each case the page goes back to the URL it was on
+     * when this file started (with the file's mock scenarios re-applied first),
+     * the readiness gate runs, then setup; teardown runs after each case. A
+     * case gated out (skip / platform / responsive) is recorded without opening
+     * anything. Each retry attempt re-opens too, so a retry starts clean.
+     *
+     * Failure semantics follow the shared path, per case: a failed re-open or
+     * setup fails that case with failureReason 'setup' (the body never ran),
+     * teardown still runs after it, and the next case re-opens independently.
+     * A teardown failure is recorded as an extra 'teardown' row naming the case.
+     */
+    async runCasesReopened(test, results) {
+        const initialUrl = this.page.url();
+        const maxAttempts = Math.max(0, this.config.caseRetries ?? 0) + 1;
+        for (const testCase of test.cases) {
+            const gated = await this.gateCase(test.metadata.name, testCase);
+            if (gated) {
+                results.push(gated);
+                continue;
             }
-            catch (error) {
-                this.log(`Mock reset failed: ${error instanceof Error ? error.message : String(error)}`);
+            let attempts = 0;
+            let result;
+            let teardownError;
+            do {
+                attempts++;
+                if (attempts > 1) {
+                    this.log(`  Case ${testCase.name} failed — retry attempt ${attempts}/${maxAttempts}`);
+                }
+                ({ result, teardownError } = await this.runReopenedAttempt(test, testCase, initialUrl));
+            } while (!result.passed && attempts < maxAttempts);
+            result.attempts = attempts;
+            results.push(result);
+            if (teardownError !== null) {
+                results.push({
+                    testName: test.metadata.name,
+                    caseName: 'teardown',
+                    passed: false,
+                    error: `after case '${testCase.name}': ${teardownError}`,
+                    failureReason: 'teardown',
+                    durationMs: 0
+                });
             }
         }
-        return {
-            suiteName: test.metadata.name,
-            results,
-            totalDurationMs: Date.now() - startTime
-        };
+    }
+    /** One reopen → setup → case → teardown pass for `runCasesReopened`. */
+    async runReopenedAttempt(test, testCase, initialUrl) {
+        this.currentTestName = test.metadata.name;
+        this.currentCaseName = 'setup';
+        let result;
+        let stageError = null;
+        try {
+            await this.reopenScreen(test, initialUrl);
+        }
+        catch (error) {
+            stageError = `reopen failed: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        if (stageError === null && test.setup) {
+            this.log('Running setup...');
+            try {
+                await this.executeSteps(test.setup, []);
+            }
+            catch (error) {
+                stageError = `setup failed: ${error instanceof Error ? error.message : String(error)}`;
+            }
+        }
+        if (stageError !== null) {
+            this.log(`Case ${testCase.name}: ${stageError}`);
+            result = await this.withOrientation({
+                testName: test.metadata.name,
+                caseName: testCase.name,
+                passed: false,
+                error: stageError,
+                failureReason: 'setup',
+                durationMs: 0
+            });
+        }
+        else {
+            result = await this.runTestCase(test.metadata.name, testCase);
+        }
+        let teardownError = null;
+        if (test.teardown) {
+            this.log('Running teardown...');
+            this.currentCaseName = 'teardown';
+            teardownError = await this.runTeardown(test.teardown);
+        }
+        return { result, teardownError };
+    }
+    /**
+     * Open the screen afresh for the next case: re-apply the file's mock
+     * scenarios (a case may have switched them), navigate back to the URL the
+     * file started on, and wait for the screen as the file start does.
+     */
+    async reopenScreen(test, initialUrl) {
+        if (!initialUrl || initialUrl === 'about:blank') {
+            throw new Error("caseIsolation 'reopen' re-opens the URL the page was on when the file started, " +
+                `and the page was on '${initialUrl || '(none)'}'. Navigate to the screen before running the file.`);
+        }
+        this.log(`Re-opening ${initialUrl} for the next case...`);
+        if (test.mocks) {
+            await this.requireMockClient('mocks').scenarioSet(test.mocks);
+        }
+        await this.page.goto(initialUrl);
+        await this.ensureWindowOpenSpy();
+        await this.waitForScreenReady(test);
+        await this.page.waitForTimeout(500);
+    }
+    /** Run teardown steps; returns the failure message, or null when they passed. */
+    async runTeardown(steps) {
+        try {
+            await this.executeSteps(steps, []);
+            return null;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`Teardown failed: ${message}`);
+            return message;
+        }
     }
     /**
      * Run a flow test
@@ -384,10 +515,12 @@ class JsonUITestRunner {
         }
         return result;
     }
-    async runTestCase(testName, testCase) {
-        const startTime = Date.now();
-        this.currentTestName = testName;
-        this.currentCaseName = testCase.name;
+    /**
+     * The static and viewport gates a case passes before anything runs: `skip`,
+     * case-level platform, case-level responsive. Returns the skipped row, or
+     * null when the case should run.
+     */
+    async gateCase(testName, testCase) {
         // Check if skipped
         if (testCase.skip) {
             this.log(`Skipping case: ${testCase.name}`);
@@ -426,6 +559,15 @@ class JsonUITestRunner {
                 durationMs: 0
             });
         }
+        return null;
+    }
+    async runTestCase(testName, testCase) {
+        const startTime = Date.now();
+        this.currentTestName = testName;
+        this.currentCaseName = testCase.name;
+        const gated = await this.gateCase(testName, testCase);
+        if (gated)
+            return gated;
         this.log(`Running case: ${testCase.name}`);
         // Apply load-time args substitution if test case has args
         const processedCase = TestLoader_1.TestLoader.applyArgsSubstitution(testCase);
