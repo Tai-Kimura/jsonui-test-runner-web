@@ -43,7 +43,6 @@ exports.ActionExecutor = void 0;
 exports.actionabilityReason = actionabilityReason;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const playwright_1 = require("playwright");
 const types_1 = require("../models/types");
 const TestLoader_1 = require("../runner/TestLoader");
 const visibility_1 = require("../visibility");
@@ -814,7 +813,8 @@ class ActionExecutor {
             return await op(timeout);
         }
         catch (e) {
-            if (e instanceof playwright_1.errors.TimeoutError) {
+            // By name, not class (isTimeoutError): the page may come from another playwright copy.
+            if ((0, visibility_1.isTimeoutError)(e)) {
                 throw new Error(`${action} '${id ?? '(no id)'}': not actionable within ${timeout}ms — ${actionabilityReason(e.message)}`);
             }
             throw e;

@@ -5,10 +5,10 @@ exports.shownPart = shownPart;
 exports.inViewport = inViewport;
 exports.geometry = geometry;
 exports.isHidden = isHidden;
+exports.isTimeoutError = isTimeoutError;
 exports.probe = probe;
 exports.viewportState = viewportState;
 exports.isInViewport = isInViewport;
-const playwright_1 = require("playwright");
 /**
  * `visible` / `notVisible`, `when: { visible }` and scrollUntilVisible's stop
  * condition: whether an element is in the viewport.
@@ -98,6 +98,19 @@ async function isHidden(locator) {
  * poll around it carries on inside the assert's timeout.
  */
 exports.PROBE_TIMEOUT_MS = 1000;
+/**
+ * Whether `e` is Playwright's TimeoutError, by its name. Not `instanceof
+ * errors.TimeoutError`: that compares against the class of the `playwright`
+ * this driver resolves, and a page started from another playwright(-core)
+ * copy throws an instance of ITS class — measured from a consumer that starts
+ * the page with playwright-core 1.48.2 while the driver resolves playwright
+ * 1.64.1: the check was false, the bounded look threw
+ * "locator.evaluate: Timeout 1000ms exceeded." instead of reading DETACHED.
+ * The name is the same in every copy.
+ */
+function isTimeoutError(e) {
+    return e instanceof Error && e.name === 'TimeoutError';
+}
 /** What a bounded look answers when the element left the DOM. */
 exports.DETACHED = Symbol('detached');
 /** Run `op` with a timeout; a Playwright TimeoutError is the element having
@@ -107,7 +120,7 @@ async function probe(op, timeout = exports.PROBE_TIMEOUT_MS) {
         return await op(timeout);
     }
     catch (e) {
-        if (e instanceof playwright_1.errors.TimeoutError)
+        if (isTimeoutError(e))
             return exports.DETACHED;
         throw e;
     }

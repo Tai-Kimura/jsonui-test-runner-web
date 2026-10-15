@@ -7,10 +7,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { errors, Page, Locator } from 'playwright';
+import { Page, Locator } from 'playwright';
 import { TestStep, deriveOrientation } from '../models/types';
 import { TestLoader } from '../runner/TestLoader';
-import { isInViewport, probe, DETACHED } from '../visibility';
+import { isInViewport, probe, DETACHED, isTimeoutError } from '../visibility';
 
 /**
  * Why Playwright could not act, from its timeout message: the last line of the
@@ -872,7 +872,8 @@ export class ActionExecutor {
     try {
       return await op(timeout);
     } catch (e) {
-      if (e instanceof errors.TimeoutError) {
+      // By name, not class (isTimeoutError): the page may come from another playwright copy.
+      if (isTimeoutError(e)) {
         throw new Error(
           `${action} '${id ?? '(no id)'}': not actionable within ${timeout}ms — ${actionabilityReason(e.message)}`
         );

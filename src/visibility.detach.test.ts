@@ -1,7 +1,7 @@
 import { errors, Locator, Page } from 'playwright';
 import { AssertionExecutor } from './assertions/AssertionExecutor';
 import { TestStep } from './models/types';
-import { DETACHED, PROBE_TIMEOUT_MS, probe, viewportState } from './visibility';
+import { DETACHED, PROBE_TIMEOUT_MS, isTimeoutError, probe, viewportState } from './visibility';
 
 /**
  * An element that is counted, reported visible, and then leaves the DOM before
@@ -78,5 +78,32 @@ describe('asserts around an element that leaves while it is measured', () => {
       const calls = { evaluate: [] as Array<number | undefined> };
       await expect(new AssertionExecutor(page(calls)).execute(step)).rejects.toThrow(/^Element 'block' not found by id$/);
     }
+  });
+});
+
+/** Playwright's TimeoutError as thrown by ANOTHER playwright(-core) copy: a
+ * different class, the same name. */
+class ForeignTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+describe('a timeout from another playwright copy', () => {
+  it('is recognised by name, not by class', () => {
+    expect(new ForeignTimeoutError('x') instanceof errors.TimeoutError).toBe(false); // control: the class differs
+    expect(isTimeoutError(new ForeignTimeoutError('x'))).toBe(true);
+    expect(isTimeoutError(new errors.TimeoutError('x'))).toBe(true);
+  });
+
+  it('nothing else is a timeout', () => {
+    expect(isTimeoutError(new Error('x'))).toBe(false);
+    expect(isTimeoutError({ name: 'TimeoutError', message: 'x' })).toBe(false);
+    expect(isTimeoutError('TimeoutError')).toBe(false);
+  });
+
+  it('probe reads it as DETACHED', async () => {
+    expect(await probe(async () => { throw new ForeignTimeoutError('locator.evaluate: Timeout 1000ms exceeded.'); })).toBe(DETACHED);
   });
 });

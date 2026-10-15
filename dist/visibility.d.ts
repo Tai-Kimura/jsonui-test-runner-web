@@ -1,4 +1,4 @@
-import { type Locator } from 'playwright';
+import type { Locator } from 'playwright';
 /**
  * `visible` / `notVisible`, `when: { visible }` and scrollUntilVisible's stop
  * condition: whether an element is in the viewport.
@@ -62,6 +62,17 @@ export declare function isHidden(locator: Locator): Promise<boolean>;
  * poll around it carries on inside the assert's timeout.
  */
 export declare const PROBE_TIMEOUT_MS = 1000;
+/**
+ * Whether `e` is Playwright's TimeoutError, by its name. Not `instanceof
+ * errors.TimeoutError`: that compares against the class of the `playwright`
+ * this driver resolves, and a page started from another playwright(-core)
+ * copy throws an instance of ITS class — measured from a consumer that starts
+ * the page with playwright-core 1.48.2 while the driver resolves playwright
+ * 1.64.1: the check was false, the bounded look threw
+ * "locator.evaluate: Timeout 1000ms exceeded." instead of reading DETACHED.
+ * The name is the same in every copy.
+ */
+export declare function isTimeoutError(e: unknown): e is Error;
 /** What a bounded look answers when the element left the DOM. */
 export declare const DETACHED: unique symbol;
 /** Run `op` with a timeout; a Playwright TimeoutError is the element having

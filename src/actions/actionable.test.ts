@@ -27,11 +27,19 @@ describe('actionabilityReason', () => {
  * with Playwright's TimeoutError (the captured message), without one it never
  * settles — the old hang, which ended only at the test's own timeout.
  */
-function neverActionable(calls: Array<number | undefined>): Locator {
+/** Playwright's TimeoutError from another playwright(-core) copy: same name, other class. */
+class ForeignTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+function neverActionable(calls: Array<number | undefined>, foreign = false): Locator {
   const act = (options?: { timeout?: number }) => {
     calls.push(options?.timeout);
     if (options?.timeout === undefined) return new Promise(() => undefined);
-    const e = new errors.TimeoutError(CAPTURED.disabled_click);
+    const e = foreign ? new ForeignTimeoutError(CAPTURED.disabled_click) : new errors.TimeoutError(CAPTURED.disabled_click);
     return new Promise((_, reject) => setTimeout(() => reject(e), 5));
   };
   const locator = {
@@ -73,4 +81,14 @@ describe('locator actions end at the step timeout with the reason', () => {
       expect(calls).toContain(300);
     });
   }
+});
+
+describe('a timeout thrown by another playwright copy', () => {
+  it('still ends the step with the reason', async () => {
+    const calls: Array<number | undefined> = [];
+    const page = { locator: () => neverActionable(calls, true), waitForTimeout: async () => undefined } as unknown as Page;
+    await expect(new ActionExecutor(page).execute({ action: 'tap', id: 'save', timeout: 300 })).rejects.toThrow(
+      /^tap 'save': not actionable within 300ms — element is not enabled$/
+    );
+  });
 });
