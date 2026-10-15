@@ -7,10 +7,28 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Page, Locator } from 'playwright';
+import { errors, Page, Locator } from 'playwright';
 import { TestStep, deriveOrientation } from '../models/types';
 import { TestLoader } from '../runner/TestLoader';
 import { isInViewport, probe, DETACHED } from '../visibility';
+
+/**
+ * Why Playwright could not act, from its timeout message: the last line of the
+ * call log that states a condition ("element is not enabled", "<div> intercepts
+ * pointer events", "element is not visible"), not the retry bookkeeping around
+ * it. Falls back to the message's first line.
+ */
+export function actionabilityReason(message: string): string {
+  // eslint-disable-next-line no-control-regex
+  const plain = message.replace(/\u001b\[[0-9;]*m/g, '');
+  const log = plain.split('Call log:')[1];
+  const lines = (log ?? '')
+    .split('\n')
+    .map((l) => l.trim().replace(/^-\s*/, '').replace(/^\d+\s*×\s*/, '').trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !/^(retrying|attempting|waiting for|waiting \d+ms|scrolling into view|done scrolling|locator resolved to|performing|element is visible, enabled and stable)/.test(l));
+  return lines.length > 0 ? lines[lines.length - 1] : plain.split('\n')[0];
+}
 
 export class ActionExecutor {
   private page: Page;
@@ -132,7 +150,7 @@ export class ActionExecutor {
     if (step.text) {
       await this.tapTextPortion(element, step.text, timeout);
     } else {
-      await element.click();
+      await this.actionable('tap', id, timeout, (t) => element.click({ timeout: t }));
     }
   }
 
@@ -142,7 +160,7 @@ export class ActionExecutor {
       throw new Error("doubleTap requires 'id'");
     }
     const element = await this.waitForElement(id, timeout);
-    await element.dblclick();
+    await this.actionable('doubleTap', id, timeout, (t) => element.dblclick({ timeout: t }));
   }
 
   private async executeLongPress(step: TestStep, timeout: number): Promise<void> {
@@ -154,7 +172,7 @@ export class ActionExecutor {
     const element = await this.waitForElement(id, timeout);
 
     // Playwright doesn't have built-in long press, simulate with mouse down/up
-    await element.hover();
+    await this.actionable('longPress', id, timeout, (t) => element.hover({ timeout: t }));
     await this.page.mouse.down();
     await this.page.waitForTimeout(duration);
     await this.page.mouse.up();
@@ -177,10 +195,10 @@ export class ActionExecutor {
     const hasInput = await input.count() > 0;
 
     if (hasInput) {
-      await input.fill(value);
+      await this.actionable('input', id, timeout, (t) => input.fill(value, { timeout: t }));
     } else {
       // Try filling directly if the element itself is an input
-      await element.fill(value);
+      await this.actionable('input', id, timeout, (t) => element.fill(value, { timeout: t }));
     }
   }
 
@@ -211,10 +229,10 @@ export class ActionExecutor {
     const hasInput = await input.count() > 0;
 
     if (hasInput) {
-      await input.clear();
+      await this.actionable('clear', id, timeout, (t) => input.clear({ timeout: t }));
     } else {
       // Try clearing directly if the element itself is an input
-      await element.clear();
+      await this.actionable('clear', id, timeout, (t) => element.clear({ timeout: t }));
     }
   }
 
@@ -499,7 +517,7 @@ export class ActionExecutor {
     // Find the item using the generated id pattern: {collectionId}_item_{index}
     const itemId = `${id}_item_${index}`;
     const element = await this.waitForElement(itemId, timeout);
-    await element.click();
+    await this.actionable('tapItem', itemId, timeout, (t) => element.click({ timeout: t }));
   }
 
   private async executeSelectTab(step: TestStep, timeout: number): Promise<void> {
@@ -515,7 +533,7 @@ export class ActionExecutor {
     // Find the tab using the generated id pattern: {tabViewId}_tab_{index}
     const tabId = `${id}_tab_${index}`;
     const element = await this.waitForElement(tabId, timeout);
-    await element.click();
+    await this.actionable('selectTab', tabId, timeout, (t) => element.click({ timeout: t }));
   }
 
   private async executeScrollUntilVisible(step: TestStep): Promise<void> {
@@ -741,7 +759,7 @@ export class ActionExecutor {
       input = this.page.locator('input[type="file"]').first();
     }
 
-    await input.setInputFiles(resolved);
+    await this.actionable('addMedia', step.id, step.timeout ?? this.defaultTimeout, (t) => input.setInputFiles(resolved, { timeout: t }));
   }
 
   /**
@@ -835,6 +853,34 @@ export class ActionExecutor {
    * Tap on a specific text portion within an element
    * Calculates the approximate position of the target text and clicks there
    */
+  /**
+   * A Playwright locator action bounded by the step's timeout. Locator actions
+   * (click, fill, hover, clear, dblclick, setInputFiles) wait until the element
+   * is actionable — attached, visible, enabled, stable, receiving events — with
+   * no timeout of their own (Playwright's actionTimeout is 0). A button that
+   * stayed disabled, or an element under an overlay, therefore held the step
+   * until the test's own timeout, and the failure named the test timeout
+   * instead of the element. The auto-wait is unchanged; it now ends at the
+   * step's timeout with what Playwright was waiting for.
+   */
+  private async actionable<T>(
+    action: string,
+    id: string | undefined,
+    timeout: number,
+    op: (timeout: number) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await op(timeout);
+    } catch (e) {
+      if (e instanceof errors.TimeoutError) {
+        throw new Error(
+          `${action} '${id ?? '(no id)'}': not actionable within ${timeout}ms — ${actionabilityReason(e.message)}`
+        );
+      }
+      throw e;
+    }
+  }
+
   private async tapTextPortion(element: Locator, targetText: string, timeout: number): Promise<void> {
     // Preferred: a real DOM descendant carrying exactly the range text —
     // ReactJsonUI renders each clickable partialAttributes range as its own
@@ -843,7 +889,7 @@ export class ActionExecutor {
     // (test-partialattributes-subrange-tap-misses-on-centered-matchparent-label).
     const rangeTarget = element.getByText(targetText, { exact: true }).first();
     if ((await rangeTarget.count()) > 0) {
-      await rangeTarget.click();
+      await this.actionable('tap', targetText, timeout, (t) => rangeTarget.click({ timeout: t }));
       return;
     }
 
@@ -863,7 +909,7 @@ export class ActionExecutor {
     const totalLength = fullText.length;
 
     if (totalLength === 0) {
-      await element.click();
+      await this.actionable('tap', targetText, timeout, (t) => element.click({ timeout: t }));
       return;
     }
 

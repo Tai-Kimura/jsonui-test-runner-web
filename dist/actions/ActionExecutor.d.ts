@@ -6,6 +6,13 @@
  */
 import { Page } from 'playwright';
 import { TestStep } from '../models/types';
+/**
+ * Why Playwright could not act, from its timeout message: the last line of the
+ * call log that states a condition ("element is not enabled", "<div> intercepts
+ * pointer events", "element is not visible"), not the retry bookkeeping around
+ * it. Falls back to the message's first line.
+ */
+export declare function actionabilityReason(message: string): string;
 export declare class ActionExecutor {
     private page;
     private defaultTimeout;
@@ -97,6 +104,17 @@ export declare class ActionExecutor {
      * Tap on a specific text portion within an element
      * Calculates the approximate position of the target text and clicks there
      */
+    /**
+     * A Playwright locator action bounded by the step's timeout. Locator actions
+     * (click, fill, hover, clear, dblclick, setInputFiles) wait until the element
+     * is actionable — attached, visible, enabled, stable, receiving events — with
+     * no timeout of their own (Playwright's actionTimeout is 0). A button that
+     * stayed disabled, or an element under an overlay, therefore held the step
+     * until the test's own timeout, and the failure named the test timeout
+     * instead of the element. The auto-wait is unchanged; it now ends at the
+     * step's timeout with what Playwright was waiting for.
+     */
+    private actionable;
     private tapTextPortion;
 }
 //# sourceMappingURL=ActionExecutor.d.ts.map
