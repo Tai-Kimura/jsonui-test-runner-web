@@ -140,6 +140,37 @@ export declare class JsonUITestRunner {
      */
     runScreenTest(test: ScreenTest, _testPath?: string): Promise<TestSuiteResult>;
     /**
+     * `caseIsolation: 'shared'` (the default): the file opens the screen once,
+     * runs setup once, runs every case in that one page state, then teardown
+     * once. A case inherits whatever the previous case left — its scroll
+     * position, the page it navigated to — so the order of the cases matters.
+     */
+    private runCasesShared;
+    /**
+     * `caseIsolation: 'reopen'`: every case that runs starts from a freshly
+     * opened screen. Before each case the page goes back to the URL it was on
+     * when this file started (with the file's mock scenarios re-applied first),
+     * the readiness gate runs, then setup; teardown runs after each case. A
+     * case gated out (skip / platform / responsive) is recorded without opening
+     * anything. Each retry attempt re-opens too, so a retry starts clean.
+     *
+     * Failure semantics follow the shared path, per case: a failed re-open or
+     * setup fails that case with failureReason 'setup' (the body never ran),
+     * teardown still runs after it, and the next case re-opens independently.
+     * A teardown failure is recorded as an extra 'teardown' row naming the case.
+     */
+    private runCasesReopened;
+    /** One reopen → setup → case → teardown pass for `runCasesReopened`. */
+    private runReopenedAttempt;
+    /**
+     * Open the screen afresh for the next case: re-apply the file's mock
+     * scenarios (a case may have switched them), navigate back to the URL the
+     * file started on, and wait for the screen as the file start does.
+     */
+    private reopenScreen;
+    /** Run teardown steps; returns the failure message, or null when they passed. */
+    private runTeardown;
+    /**
      * Run a flow test
      */
     runFlowTest(test: FlowTest, _testPath?: string): Promise<TestSuiteResult>;
@@ -149,6 +180,12 @@ export declare class JsonUITestRunner {
      * total attempt count (skipped rows never ran and carry none).
      */
     private runTestCaseWithRetries;
+    /**
+     * The static and viewport gates a case passes before anything runs: `skip`,
+     * case-level platform, case-level responsive. Returns the skipped row, or
+     * null when the case should run.
+     */
+    private gateCase;
     private runTestCase;
     private executeSteps;
     /**

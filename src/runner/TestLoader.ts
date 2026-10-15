@@ -159,6 +159,15 @@ export class TestLoader {
     if (!test.cases || test.cases.length === 0) {
       throw new Error(`Screen test '${filePath}' has no test cases`);
     }
+    // A misspelt value would otherwise fall through to 'shared' and the file
+    // would run with exactly the shared state it declared it did not want.
+    if (test.caseIsolation !== undefined
+        && test.caseIsolation !== 'shared' && test.caseIsolation !== 'reopen') {
+      throw new Error(
+        `Screen test '${filePath}' has an unknown caseIsolation ${JSON.stringify(test.caseIsolation)} ` +
+        `(allowed: 'shared', 'reopen')`
+      );
+    }
 
     return test;
   }
