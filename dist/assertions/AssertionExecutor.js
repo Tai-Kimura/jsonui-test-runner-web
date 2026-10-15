@@ -218,24 +218,20 @@ class AssertionExecutor {
     async assertVisible(step, timeout) {
         const id = this.requireId(step, 'visible');
         await this.pollUntil(timeout, async () => {
-            const element = this.getLocator(id);
-            if (await element.count() === 0) {
-                return `Element '${id}' should be visible but it does not exist`;
+            // viewportState counts first, and reads an element that leaves the DOM
+            // while it is being measured as absent (src/visibility.ts probe).
+            switch (await (0, visibility_1.viewportState)(this.getLocator(id))) {
+                case 'absent': return `Element '${id}' should be visible but it does not exist`;
+                case 'out': return `Element '${id}' should be visible but it is not in the viewport`;
+                case 'in': return null;
             }
-            return await (0, visibility_1.isInViewport)(element)
-                ? null
-                : `Element '${id}' should be visible but it is not in the viewport`;
         });
     }
     async assertNotVisible(step, timeout) {
         const id = this.requireId(step, 'notVisible');
         await this.pollUntil(timeout, async () => {
             // Exactly not `visible`: absent, hidden, or nothing of it in the viewport.
-            const element = this.getLocator(id);
-            if (await element.count() === 0) {
-                return null;
-            }
-            return await (0, visibility_1.isInViewport)(element)
+            return (await (0, visibility_1.viewportState)(this.getLocator(id))) === 'in'
                 ? `Element '${id}' should not be visible but it is`
                 : null;
         });
@@ -255,6 +251,8 @@ class AssertionExecutor {
                 return `Element '${id}' not found by id`;
             }
             const disabled = await this.isElementDisabled(element);
+            if (disabled === visibility_1.DETACHED)
+                return `Element '${id}' not found by id`;
             return disabled ? `Element '${id}' should be enabled but it is disabled` : null;
         });
     }
@@ -266,6 +264,8 @@ class AssertionExecutor {
                 return `Element '${id}' not found by id`;
             }
             const disabled = await this.isElementDisabled(element);
+            if (disabled === visibility_1.DETACHED)
+                return `Element '${id}' not found by id`;
             return disabled ? null : `Element '${id}' should be disabled but it is enabled`;
         });
     }
@@ -280,6 +280,8 @@ class AssertionExecutor {
                 return `Element '${id}' not found by id`;
             }
             const actualText = await this.readElementText(element);
+            if (actualText === visibility_1.DETACHED)
+                return `Element '${id}' not found by id`;
             if (step.equals !== undefined) {
                 const expected = String(step.equals);
                 return actualText === expected
@@ -402,16 +404,18 @@ class AssertionExecutor {
     getLocator(id) {
         return this.page.locator(`#${id}`);
     }
+    /** Bounded (src/visibility.ts probe): DETACHED when the element left the DOM. */
     async isElementDisabled(element) {
-        return element.evaluate((el) => {
+        return (0, visibility_1.probe)((timeout) => element.evaluate((el) => {
             if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
                 return el.disabled;
             }
             return el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled');
-        });
+        }, undefined, { timeout }));
     }
+    /** Bounded (src/visibility.ts probe): DETACHED when the element left the DOM. */
     async readElementText(element) {
-        return element.evaluate((el) => {
+        return (0, visibility_1.probe)((timeout) => element.evaluate((el) => {
             if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
                 return el.value;
             }
@@ -424,7 +428,7 @@ class AssertionExecutor {
                 return input.value;
             }
             return el.textContent ?? '';
-        });
+        }, undefined, { timeout }));
     }
 }
 exports.AssertionExecutor = AssertionExecutor;

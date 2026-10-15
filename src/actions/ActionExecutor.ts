@@ -10,7 +10,7 @@ import * as path from 'path';
 import { Page, Locator } from 'playwright';
 import { TestStep, deriveOrientation } from '../models/types';
 import { TestLoader } from '../runner/TestLoader';
-import { isInViewport } from '../visibility';
+import { isInViewport, probe, DETACHED } from '../visibility';
 
 export class ActionExecutor {
   private page: Page;
@@ -130,7 +130,7 @@ export class ActionExecutor {
 
     // If text is specified, tap on the specific text portion within the element
     if (step.text) {
-      await this.tapTextPortion(element, step.text);
+      await this.tapTextPortion(element, step.text, timeout);
     } else {
       await element.click();
     }
@@ -229,7 +229,9 @@ export class ActionExecutor {
     }
 
     const element = await this.waitForElement(id, timeout);
-    const box = await element.boundingBox();
+    // Bounded: an element that leaves the DOM after waitForElement must fail
+    // this step inside its timeout, not hold it (boundingBox waits otherwise).
+    const box = await element.boundingBox({ timeout });
 
     if (!box) {
       throw new Error(`Element '${id}' has no bounding box`);
@@ -253,7 +255,7 @@ export class ActionExecutor {
           el.scrollLeft += amount;
           break;
       }
-    }, { direction, amount: scrollAmount });
+    }, { direction, amount: scrollAmount }, { timeout });
   }
 
   private async executeSwipe(step: TestStep, timeout: number): Promise<void> {
@@ -267,7 +269,9 @@ export class ActionExecutor {
     }
 
     const element = await this.waitForElement(id, timeout);
-    const box = await element.boundingBox();
+    // Bounded: an element that leaves the DOM after waitForElement must fail
+    // this step inside its timeout, not hold it (boundingBox waits otherwise).
+    const box = await element.boundingBox({ timeout });
 
     if (!box) {
       throw new Error(`Element '${id}' has no bounding box`);
@@ -600,7 +604,9 @@ export class ActionExecutor {
       if (await container.count() === 0) {
         throw new Error(`scrollUntilVisible container '${containerId}' not found`);
       }
-      return container.evaluate((el, dir) => {
+      // Bounded (src/visibility.ts probe): a container that left the DOM since
+      // it was counted is not found, as above, instead of holding the search.
+      const scrolled = await probe((t) => container.evaluate((el, dir) => {
         const step = Math.round((dir === 'up' || dir === 'down' ? el.clientHeight : el.clientWidth) * 0.7);
         switch (dir) {
           case 'up': el.scrollTop -= step; break;
@@ -609,7 +615,11 @@ export class ActionExecutor {
           case 'right': el.scrollLeft += step; break;
         }
         return `${el.scrollTop},${el.scrollLeft}`;
-      }, direction);
+      }, direction, { timeout: t }));
+      if (scrolled === DETACHED) {
+        throw new Error(`scrollUntilVisible container '${containerId}' not found`);
+      }
+      return scrolled;
     }
 
     // No container: the target's nearest ancestor that scrolls on this axis
@@ -620,7 +630,9 @@ export class ActionExecutor {
     // consumer list page: "not found after scrolling to both ends of the
     // page", and green once `container` named the ScrollView).
     if (target && (await target.count()) > 0) {
-      const marker = await target.evaluate((el: Element, dir: string) => {
+      // Bounded: a target that left the DOM since it was counted is "not in
+      // the DOM yet" (DETACHED), and the window below is scrolled instead.
+      const marker = await probe((t) => target.evaluate((el: Element, dir: string) => {
         const vertical = dir === 'up' || dir === 'down';
         for (let a = el.parentElement; a; a = a.parentElement) {
           const cs = getComputedStyle(a);
@@ -638,8 +650,8 @@ export class ActionExecutor {
           return `${a.scrollTop},${a.scrollLeft}`;
         }
         return null;
-      }, direction);
-      if (marker !== null) return marker;
+      }, direction, { timeout: t }));
+      if (marker !== null && marker !== DETACHED) return marker;
     }
 
     // Nothing above the target scrolls (or it is not in the DOM yet): the window
@@ -678,7 +690,7 @@ export class ActionExecutor {
         return input.value;
       }
       return el.textContent ?? '';
-    });
+    }, undefined, { timeout });
 
     this.variables[variable] = text;
   }
@@ -720,7 +732,9 @@ export class ActionExecutor {
       const target = this.getLocator(step.id).first();
       await target.waitFor({ state: 'attached', timeout: step.timeout ?? this.defaultTimeout });
       const isFileInput = await target.evaluate(
-        (node) => node instanceof HTMLInputElement && node.type === 'file'
+        (node) => node instanceof HTMLInputElement && node.type === 'file',
+        undefined,
+        { timeout: step.timeout ?? this.defaultTimeout }
       );
       input = isFileInput ? target : target.locator('input[type="file"]').first();
     } else {
@@ -821,7 +835,7 @@ export class ActionExecutor {
    * Tap on a specific text portion within an element
    * Calculates the approximate position of the target text and clicks there
    */
-  private async tapTextPortion(element: Locator, targetText: string): Promise<void> {
+  private async tapTextPortion(element: Locator, targetText: string, timeout: number): Promise<void> {
     // Preferred: a real DOM descendant carrying exactly the range text —
     // ReactJsonUI renders each clickable partialAttributes range as its own
     // <span onClick>. Clicking its true rect is exact for centered/matchParent
@@ -833,7 +847,9 @@ export class ActionExecutor {
       return;
     }
 
-    const fullText = await element.textContent();
+    // Bounded, as boundingBox below: the step fails inside its timeout if the
+    // element leaves the DOM after waitForElement.
+    const fullText = await element.textContent({ timeout });
     if (!fullText) {
       throw new Error('Element has no text content');
     }
@@ -857,7 +873,7 @@ export class ActionExecutor {
     const centerRatio = (startRatio + endRatio) / 2;
 
     // Get the bounding box of the element
-    const box = await element.boundingBox();
+    const box = await element.boundingBox({ timeout });
     if (!box) {
       throw new Error('Element has no bounding box');
     }

@@ -1,4 +1,4 @@
-import type { Locator } from 'playwright';
+import { type Locator } from 'playwright';
 /**
  * `visible` / `notVisible`, `when: { visible }` and scrollUntilVisible's stop
  * condition: whether an element is in the viewport.
@@ -31,10 +31,10 @@ export declare function inViewport(rect: Rect, clips: Rect[]): boolean;
  * the first `position: fixed` element (which is positioned against the
  * viewport, not against its ancestors).
  */
-export declare function geometry(locator: Locator): Promise<{
+export declare function geometry(locator: Locator, timeout?: number): Promise<{
     rect: Rect;
     clips: Rect[];
-}>;
+} | null>;
 /**
  * `hidden` and `when: { hidden }`: not drawn, wherever it is. True when no
  * element matches, or none of those that do is drawn: `checkVisibility` with
@@ -48,6 +48,30 @@ export declare function geometry(locator: Locator): Promise<{
  * Android's semantics tree on every shape.
  */
 export declare function isHidden(locator: Locator): Promise<boolean>;
+/**
+ * How long one look waits for an element it has just counted.
+ *
+ * `locator.evaluate` (and boundingBox, textContent, ...) WAITS for the element
+ * to be attached, with no timeout of its own (Playwright's actionTimeout is 0).
+ * An element that left the DOM between `count()` and `evaluate` therefore held
+ * the look until the test's own timeout (30 s): the assert's timeout never got
+ * a turn, and the failure read "locator.evaluate: Test timeout of 30000ms
+ * exceeded" (reported from a consumer: 1 run in 31, an element made gone by a
+ * response arriving while `notVisible` looked at it). A look is now bounded: a
+ * counted element that is not there within this long is read as gone, and the
+ * poll around it carries on inside the assert's timeout.
+ */
+export declare const PROBE_TIMEOUT_MS = 1000;
+/** What a bounded look answers when the element left the DOM. */
+export declare const DETACHED: unique symbol;
+/** Run `op` with a timeout; a Playwright TimeoutError is the element having
+ * left the DOM (DETACHED), anything else is rethrown. */
+export declare function probe<T>(op: (timeout: number) => Promise<T>, timeout?: number): Promise<T | typeof DETACHED>;
+/** Where the first element the locator matches is: not there (absent — also
+ * when it leaves the DOM while being read), there but not in the viewport, or
+ * in it. */
+export type ViewportState = 'absent' | 'out' | 'in';
+export declare function viewportState(locator: Locator): Promise<ViewportState>;
 /** Whether the first element the locator matches is in the viewport. */
 export declare function isInViewport(locator: Locator): Promise<boolean>;
 //# sourceMappingURL=visibility.d.ts.map

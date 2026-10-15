@@ -153,7 +153,7 @@ class ActionExecutor {
         const element = await this.waitForElement(id, timeout);
         // If text is specified, tap on the specific text portion within the element
         if (step.text) {
-            await this.tapTextPortion(element, step.text);
+            await this.tapTextPortion(element, step.text, timeout);
         }
         else {
             await element.click();
@@ -241,7 +241,9 @@ class ActionExecutor {
             throw new Error("scroll requires 'direction'");
         }
         const element = await this.waitForElement(id, timeout);
-        const box = await element.boundingBox();
+        // Bounded: an element that leaves the DOM after waitForElement must fail
+        // this step inside its timeout, not hold it (boundingBox waits otherwise).
+        const box = await element.boundingBox({ timeout });
         if (!box) {
             throw new Error(`Element '${id}' has no bounding box`);
         }
@@ -262,7 +264,7 @@ class ActionExecutor {
                     el.scrollLeft += amount;
                     break;
             }
-        }, { direction, amount: scrollAmount });
+        }, { direction, amount: scrollAmount }, { timeout });
     }
     async executeSwipe(step, timeout) {
         const id = step.id;
@@ -274,7 +276,9 @@ class ActionExecutor {
             throw new Error("swipe requires 'direction'");
         }
         const element = await this.waitForElement(id, timeout);
-        const box = await element.boundingBox();
+        // Bounded: an element that leaves the DOM after waitForElement must fail
+        // this step inside its timeout, not hold it (boundingBox waits otherwise).
+        const box = await element.boundingBox({ timeout });
         if (!box) {
             throw new Error(`Element '${id}' has no bounding box`);
         }
@@ -551,7 +555,9 @@ class ActionExecutor {
             if (await container.count() === 0) {
                 throw new Error(`scrollUntilVisible container '${containerId}' not found`);
             }
-            return container.evaluate((el, dir) => {
+            // Bounded (src/visibility.ts probe): a container that left the DOM since
+            // it was counted is not found, as above, instead of holding the search.
+            const scrolled = await (0, visibility_1.probe)((t) => container.evaluate((el, dir) => {
                 const step = Math.round((dir === 'up' || dir === 'down' ? el.clientHeight : el.clientWidth) * 0.7);
                 switch (dir) {
                     case 'up':
@@ -568,7 +574,11 @@ class ActionExecutor {
                         break;
                 }
                 return `${el.scrollTop},${el.scrollLeft}`;
-            }, direction);
+            }, direction, { timeout: t }));
+            if (scrolled === visibility_1.DETACHED) {
+                throw new Error(`scrollUntilVisible container '${containerId}' not found`);
+            }
+            return scrolled;
         }
         // No container: the target's nearest ancestor that scrolls on this axis
         // (overflow auto / scroll, content larger than the box), as iOS takes a
@@ -578,7 +588,9 @@ class ActionExecutor {
         // consumer list page: "not found after scrolling to both ends of the
         // page", and green once `container` named the ScrollView).
         if (target && (await target.count()) > 0) {
-            const marker = await target.evaluate((el, dir) => {
+            // Bounded: a target that left the DOM since it was counted is "not in
+            // the DOM yet" (DETACHED), and the window below is scrolled instead.
+            const marker = await (0, visibility_1.probe)((t) => target.evaluate((el, dir) => {
                 const vertical = dir === 'up' || dir === 'down';
                 for (let a = el.parentElement; a; a = a.parentElement) {
                     const cs = getComputedStyle(a);
@@ -605,8 +617,8 @@ class ActionExecutor {
                     return `${a.scrollTop},${a.scrollLeft}`;
                 }
                 return null;
-            }, direction);
-            if (marker !== null)
+            }, direction, { timeout: t }));
+            if (marker !== null && marker !== visibility_1.DETACHED)
                 return marker;
         }
         // Nothing above the target scrolls (or it is not in the DOM yet): the window
@@ -649,7 +661,7 @@ class ActionExecutor {
                 return input.value;
             }
             return el.textContent ?? '';
-        });
+        }, undefined, { timeout });
         this.variables[variable] = text;
     }
     async executeSetLocation(step) {
@@ -685,7 +697,7 @@ class ActionExecutor {
         if (step.id) {
             const target = this.getLocator(step.id).first();
             await target.waitFor({ state: 'attached', timeout: step.timeout ?? this.defaultTimeout });
-            const isFileInput = await target.evaluate((node) => node instanceof HTMLInputElement && node.type === 'file');
+            const isFileInput = await target.evaluate((node) => node instanceof HTMLInputElement && node.type === 'file', undefined, { timeout: step.timeout ?? this.defaultTimeout });
             input = isFileInput ? target : target.locator('input[type="file"]').first();
         }
         else {
@@ -768,7 +780,7 @@ class ActionExecutor {
      * Tap on a specific text portion within an element
      * Calculates the approximate position of the target text and clicks there
      */
-    async tapTextPortion(element, targetText) {
+    async tapTextPortion(element, targetText, timeout) {
         // Preferred: a real DOM descendant carrying exactly the range text —
         // ReactJsonUI renders each clickable partialAttributes range as its own
         // <span onClick>. Clicking its true rect is exact for centered/matchParent
@@ -779,7 +791,9 @@ class ActionExecutor {
             await rangeTarget.click();
             return;
         }
-        const fullText = await element.textContent();
+        // Bounded, as boundingBox below: the step fails inside its timeout if the
+        // element leaves the DOM after waitForElement.
+        const fullText = await element.textContent({ timeout });
         if (!fullText) {
             throw new Error('Element has no text content');
         }
@@ -798,7 +812,7 @@ class ActionExecutor {
         const endRatio = endIndex / totalLength;
         const centerRatio = (startRatio + endRatio) / 2;
         // Get the bounding box of the element
-        const box = await element.boundingBox();
+        const box = await element.boundingBox({ timeout });
         if (!box) {
             throw new Error('Element has no bounding box');
         }

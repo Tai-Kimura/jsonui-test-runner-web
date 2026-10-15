@@ -103,7 +103,9 @@ export declare class AssertionExecutor {
      * Get locator for element by id attribute
      */
     private getLocator;
+    /** Bounded (src/visibility.ts probe): DETACHED when the element left the DOM. */
     private isElementDisabled;
+    /** Bounded (src/visibility.ts probe): DETACHED when the element left the DOM. */
     private readElementText;
 }
 //# sourceMappingURL=AssertionExecutor.d.ts.map
