@@ -309,6 +309,17 @@ runner does, in this order, on the page it drives:
 7. **receipt** — the screen confirms the payload on its state bridge; no
    receipt, or any rejected key, fails the cases with `failureReason: "setup"`.
 
+Between steps 3 and 4 the runner calls the config hook `afterLaunch(page)`
+when the harness passes one (awaited; a throw fails the launch like the other
+steps). It runs on every launch — per case under `caseIsolation: "reopen"` —
+and not at all for a file with nothing to launch with.
+
+On web the payload also carries `writtenAt` (the page's `Date.now()` when it
+was written). The generated hook consumes it only in a document whose
+`performance.timeOrigin` is later — the document the reload / `goto` opens —
+so a page still hydrating from before the launch cannot take it first; such
+an older document leaves the payload untouched and shows no receipt.
+
 At the end of each file the runner removes `JSONUI_TEST_ARGS` and
 `JSONUI_TEST_INITIAL_STATE` from sessionStorage. The page must already be on
 the app (not `about:blank`) when a file with a launch starts. Reading
@@ -337,6 +348,24 @@ The receiving side and the bridge come from the code `jui build` generates
 hand-written page calls it itself) and run only while
 `NODE_ENV !== 'production'`. A production build therefore fails a file with
 an initialState with "no receipt" — by design.
+
+### Harness: seed cookies in `afterLaunch`
+
+`applyLaunchConfig` is gone (1.15.0): the runner applies `launch` itself, and
+its `clearState` removes cookies and storage. Whatever the harness set up
+before `runner.run()` and needs to survive a launch — an auth cookie, a
+storage flag — goes in `afterLaunch`, which runs after the clearing and
+before the page is reloaded:
+
+```typescript
+const runner = new JsonUITestRunner(page, {
+  afterLaunch: async (page) => {
+    await page.context().addCookies([{ name: 'session', value: token, url: baseUrl }]);
+  },
+});
+```
+
+(or `createRunner().afterLaunch(async (page) => { … }).build(page)`).
 
 ## API mocks
 

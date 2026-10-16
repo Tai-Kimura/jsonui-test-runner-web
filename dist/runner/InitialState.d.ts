@@ -22,6 +22,14 @@ export interface InitialStatePayload {
     /** A fresh UUID per launch; the app echoes it on the bridge with its receipt. */
     launchId: string;
     screens: InitialStateScreens;
+    /**
+     * Web only: when the payload was written, `Date.now()` in the page (ms since
+     * the epoch, the browser's clock). Set by writeInitialState. The app consumes
+     * the payload only in a document whose `performance.timeOrigin` is later —
+     * the document the launch's reload / goto opens — so a document that was
+     * still hydrating when the payload was written cannot take it first.
+     */
+    writtenAt?: number;
 }
 /** True when the case writes a non-empty initialState of its own. */
 export declare function caseHasInitialState(testCase: TestCase): boolean;
@@ -56,8 +64,9 @@ export declare function referencedInitialStateWarnings(step: FlowTestStep, refer
 export declare function referencedInitialStateMessage(w: ReferencedInitialStateWarning): string;
 export declare function makePayload(screens: InitialStateScreens): InitialStatePayload;
 /**
- * Write the payload to sessionStorage, or remove a stale one when this launch
- * carries none. Step 4 of the launch sequence: after arguments, before mocks.
+ * Write the payload to sessionStorage, stamped with `writtenAt` (the page's
+ * `Date.now()`), or remove a stale one when this launch carries none. Step 4
+ * of the launch sequence: after arguments (and afterLaunch), before mocks.
  */
 export declare function writeInitialState(page: Page, payload: InitialStatePayload | null): Promise<void>;
 export interface PlannedLaunch {

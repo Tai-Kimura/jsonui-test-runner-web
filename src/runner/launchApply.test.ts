@@ -171,3 +171,90 @@ describe('initialState receipt in a screen test', () => {
     expect(suite.results[0]).toMatchObject({ passed: true });
   });
 });
+
+describe('afterLaunch (harness hook)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  function hooked(browser: FakeBrowser, hook: (page: unknown) => void | Promise<void>): JsonUITestRunner {
+    const r = new JsonUITestRunner(browser.page(), { screenshotOnFailure: false, screenReadyTimeout: 50, afterLaunch: hook });
+    (r as any).mockClient = { scenarioSet: async () => { browser.log.push('scenarioSet'); }, reset: async () => undefined };
+    jest.spyOn(r as any, 'executeSteps').mockImplementation(async () => undefined);
+    return r;
+  }
+
+  it('runs after clearState / permissions / arguments and before the payload, the mocks and the reload', async () => {
+    const browser = new FakeBrowser();
+    browser.onLoad = fakeApp('test_screen', { email: '' });
+    const suite = await hooked(browser, async () => { browser.log.push('afterLaunch'); }).runScreenTest(screenTest({
+      launch: FULL_LAUNCH, mocks: { getItems: 'empty' }, initialState: { viewModel: { email: 'a' } }
+    }));
+    expect(suite.results[0].passed).toBe(true);
+    expect(browser.log.slice(0, browser.log.indexOf('reload') + 1)).toEqual([
+      'clearCookies', 'local.clear', 'session.clear', 'clearPermissions', 'grant:camera@http://localhost',
+      `session.set:${ARGS_KEY}`, 'afterLaunch', `session.set:${INITIAL_STATE_KEY}`, 'scenarioSet', 'reload'
+    ]);
+  });
+
+  it('a cookie it seeds survives to the launched document (clearState came first)', async () => {
+    const browser = new FakeBrowser();
+    const jar: string[] = [];
+    browser.log.push = new Proxy(browser.log.push, {
+      apply: (target, self, args) => { if (args[0] === 'clearCookies') jar.length = 0; return Reflect.apply(target, self, args); }
+    });
+    let atLoad: string[] = [];
+    browser.onLoad = () => { atLoad = [...jar]; };
+    await hooked(browser, () => { jar.push('session=abc'); }).runScreenTest(screenTest({ launch: { clearState: true } }));
+    expect(atLoad).toEqual(['session=abc']);
+  });
+
+  it('runs once per launch: per case under reopen, each before that case\'s goto', async () => {
+    const browser = new FakeBrowser();
+    browser.onLoad = fakeApp('test_screen', { email: '' });
+    const test = screenTest({ caseIsolation: 'reopen', launch: { clearState: true } });
+    test.cases.push({ name: 'd', steps: [] });
+    await hooked(browser, () => { browser.log.push('afterLaunch'); }).runScreenTest(test);
+    const order = browser.log.filter(e => e === 'afterLaunch' || e.startsWith('goto:'));
+    expect(order).toEqual(['afterLaunch', 'goto:http://localhost/screen', 'afterLaunch', 'goto:http://localhost/screen']);
+  });
+
+  it('a throw fails the cases as setup, like any launch step', async () => {
+    const browser = new FakeBrowser();
+    const suite = await hooked(browser, async () => { throw new Error('seed failed'); })
+      .runScreenTest(screenTest({ launch: { clearState: true } }));
+    expect(suite.results[0]).toMatchObject({ passed: false, failureReason: 'setup' });
+    expect(suite.results[0].error).toContain('launch failed: seed failed');
+    expect(browser.log).not.toContain('reload');
+  });
+
+  it('is not called when the file has nothing to launch with', async () => {
+    const browser = new FakeBrowser();
+    const hook = jest.fn();
+    await hooked(browser, hook).runScreenTest(screenTest());
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('runs in a flow launch too', async () => {
+    const browser = new FakeBrowser('http://localhost/', ['test_screen']);
+    const hook = jest.fn();
+    const r = hooked(browser, hook);
+    jest.spyOn((r as any).actionExecutor, 'execute').mockImplementation(async () => undefined);
+    await r.runFlowTest({ type: 'flow', metadata: { name: 'f' }, launch: { clearState: true }, steps: [] });
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('payload writtenAt (web)', () => {
+  it('stamps the payload with the page clock at the moment it is written', async () => {
+    const browser = new FakeBrowser();
+    browser.onLoad = fakeApp('test_screen', { email: '' });
+    let seen: { writtenAt?: number } | null = null;
+    const app = browser.onLoad;
+    browser.onLoad = (win) => { seen = JSON.parse(win.sessionStorage.getItem(INITIAL_STATE_KEY) as string); app(win); };
+    const before = Date.now();
+    await runner(browser).runScreenTest(screenTest({ initialState: { viewModel: { email: 'a' } } }));
+    const after = Date.now();
+    expect(typeof seen!.writtenAt).toBe('number');
+    expect(seen!.writtenAt!).toBeGreaterThanOrEqual(before);
+    expect(seen!.writtenAt!).toBeLessThanOrEqual(after);
+  });
+});

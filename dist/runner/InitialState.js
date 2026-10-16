@@ -109,15 +109,18 @@ function makePayload(screens) {
     return { version: 1, launchId: (0, crypto_1.randomUUID)(), screens };
 }
 /**
- * Write the payload to sessionStorage, or remove a stale one when this launch
- * carries none. Step 4 of the launch sequence: after arguments, before mocks.
+ * Write the payload to sessionStorage, stamped with `writtenAt` (the page's
+ * `Date.now()`), or remove a stale one when this launch carries none. Step 4
+ * of the launch sequence: after arguments (and afterLaunch), before mocks.
  */
 async function writeInitialState(page, payload) {
     await page.evaluate(([key, json]) => {
-        if (json === null)
+        if (json === null) {
             window.sessionStorage.removeItem(key);
-        else
-            window.sessionStorage.setItem(key, json);
+            return;
+        }
+        const stamped = { ...JSON.parse(json), writtenAt: Date.now() };
+        window.sessionStorage.setItem(key, JSON.stringify(stamped));
     }, [exports.INITIAL_STATE_KEY, payload === null ? null : JSON.stringify(payload)]);
 }
 /**

@@ -29,6 +29,14 @@ export interface InitialStatePayload {
   /** A fresh UUID per launch; the app echoes it on the bridge with its receipt. */
   launchId: string;
   screens: InitialStateScreens;
+  /**
+   * Web only: when the payload was written, `Date.now()` in the page (ms since
+   * the epoch, the browser's clock). Set by writeInitialState. The app consumes
+   * the payload only in a document whose `performance.timeOrigin` is later —
+   * the document the launch's reload / goto opens — so a document that was
+   * still hydrating when the payload was written cannot take it first.
+   */
+  writtenAt?: number;
 }
 
 function nonEmpty(viewModel: Record<string, unknown> | undefined | null): viewModel is Record<string, unknown> {
@@ -137,14 +145,19 @@ export function makePayload(screens: InitialStateScreens): InitialStatePayload {
 }
 
 /**
- * Write the payload to sessionStorage, or remove a stale one when this launch
- * carries none. Step 4 of the launch sequence: after arguments, before mocks.
+ * Write the payload to sessionStorage, stamped with `writtenAt` (the page's
+ * `Date.now()`), or remove a stale one when this launch carries none. Step 4
+ * of the launch sequence: after arguments (and afterLaunch), before mocks.
  */
 export async function writeInitialState(page: Page, payload: InitialStatePayload | null): Promise<void> {
   await page.evaluate(
     ([key, json]) => {
-      if (json === null) window.sessionStorage.removeItem(key);
-      else window.sessionStorage.setItem(key, json);
+      if (json === null) {
+        window.sessionStorage.removeItem(key);
+        return;
+      }
+      const stamped = { ...JSON.parse(json), writtenAt: Date.now() };
+      window.sessionStorage.setItem(key, JSON.stringify(stamped));
     },
     [INITIAL_STATE_KEY, payload === null ? null : JSON.stringify(payload)] as [string, string | null]
   );

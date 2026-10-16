@@ -30,6 +30,7 @@ const DEFAULT_CONFIG = {
     verbose: false,
     caseRetries: 0,
     stateProvider: undefined,
+    afterLaunch: undefined,
     baselineDir: './baselines',
     updateBaselines: false,
     mockServerUrl: undefined,
@@ -429,6 +430,10 @@ class JsonUITestRunner {
         if (!(0, InitialState_1.launchNeeded)(test, screens))
             return undefined;
         await (0, LaunchConfig_1.applyLaunchToPage)(this.page, test.launch);
+        if (this.config.afterLaunch) {
+            this.log('Running afterLaunch...');
+            await this.config.afterLaunch(this.page);
+        }
         const payload = screens ? (0, InitialState_1.makePayload)(screens) : null;
         await (0, InitialState_1.writeInitialState)(this.page, payload);
         if (test.mocks) {
@@ -1285,6 +1290,11 @@ class TestRunnerBuilder {
     }
     screenshotDir(dir) {
         this.config.screenshotDir = dir;
+        return this;
+    }
+    /** See TestRunnerConfig.afterLaunch. */
+    afterLaunch(hook) {
+        this.config.afterLaunch = hook;
         return this;
     }
     stateProvider(provider) {

@@ -101,6 +101,17 @@ export interface TestRunnerConfig {
    */
   runDefaults?: RunDefaults | null;
   /**
+   * Called on every launch (web: §10.2), after clearState, permissions and
+   * arguments are applied and before the initialState payload, the mocks and
+   * the reload (`goto` on a reopen) — so per case under caseIsolation
+   * 'reopen'. The place for what the harness used to do after
+   * applyLaunchConfig, e.g. seeding auth cookies that clearState removed.
+   * Awaited; a throw fails the launch like any other launch step (screen
+   * test: the cases as 'setup'; flow: the flow). Not called when the file
+   * has nothing to launch with (no launch, mocks or initialState).
+   */
+  afterLaunch?: (page: Page) => void | Promise<void>;
+  /**
    * Provider for `state` assertions and `state` conditions. Leave it unset:
    * the default reads the state bridge the generated hook publishes
    * (`window.__JSONUI_STATE__[screenId]`). One passed here wins.
@@ -148,7 +159,7 @@ export interface TestRunnerConfig {
   screenReadyTimeout?: number;
 }
 
-type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken' | 'runDefaults';
+type OptionalConfigKeys = 'stateProvider' | 'mockServerUrl' | 'mockToken' | 'runDefaults' | 'afterLaunch';
 type ResolvedConfig =
   Required<Omit<TestRunnerConfig, OptionalConfigKeys | 'responsive'>> &
   Pick<TestRunnerConfig, OptionalConfigKeys> &
@@ -164,6 +175,7 @@ const DEFAULT_CONFIG: ResolvedConfig = {
   verbose: false,
   caseRetries: 0,
   stateProvider: undefined,
+  afterLaunch: undefined,
   baselineDir: './baselines',
   updateBaselines: false,
   mockServerUrl: undefined,
@@ -627,6 +639,10 @@ export class JsonUITestRunner {
   ): Promise<string | null | undefined> {
     if (!launchNeeded(test, screens)) return undefined;
     await applyLaunchToPage(this.page, test.launch);
+    if (this.config.afterLaunch) {
+      this.log('Running afterLaunch...');
+      await this.config.afterLaunch(this.page);
+    }
     const payload = screens ? makePayload(screens) : null;
     await writeInitialState(this.page, payload);
     if (test.mocks) {
@@ -1549,6 +1565,12 @@ export class TestRunnerBuilder {
 
   screenshotDir(dir: string): this {
     this.config.screenshotDir = dir;
+    return this;
+  }
+
+  /** See TestRunnerConfig.afterLaunch. */
+  afterLaunch(hook: (page: Page) => void | Promise<void>): this {
+    this.config.afterLaunch = hook;
     return this;
   }
 

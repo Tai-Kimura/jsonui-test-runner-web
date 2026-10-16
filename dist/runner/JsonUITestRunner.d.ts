@@ -49,6 +49,17 @@ export interface TestRunnerConfig {
      */
     runDefaults?: RunDefaults | null;
     /**
+     * Called on every launch (web: §10.2), after clearState, permissions and
+     * arguments are applied and before the initialState payload, the mocks and
+     * the reload (`goto` on a reopen) — so per case under caseIsolation
+     * 'reopen'. The place for what the harness used to do after
+     * applyLaunchConfig, e.g. seeding auth cookies that clearState removed.
+     * Awaited; a throw fails the launch like any other launch step (screen
+     * test: the cases as 'setup'; flow: the flow). Not called when the file
+     * has nothing to launch with (no launch, mocks or initialState).
+     */
+    afterLaunch?: (page: Page) => void | Promise<void>;
+    /**
      * Provider for `state` assertions and `state` conditions. Leave it unset:
      * the default reads the state bridge the generated hook publishes
      * (`window.__JSONUI_STATE__[screenId]`). One passed here wins.
@@ -342,6 +353,8 @@ export declare class TestRunnerBuilder {
     defaultTimeout(timeout: number): this;
     screenshotOnFailure(enabled: boolean): this;
     screenshotDir(dir: string): this;
+    /** See TestRunnerConfig.afterLaunch. */
+    afterLaunch(hook: (page: Page) => void | Promise<void>): this;
     stateProvider(provider: StateProvider): this;
     baselineDir(dir: string): this;
     updateBaselines(enabled: boolean): this;
