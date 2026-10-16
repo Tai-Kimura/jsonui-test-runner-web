@@ -695,7 +695,6 @@ export class JsonUITestRunner {
     this.currentTestName = test.metadata.name;
     this.currentCaseName = 'flow';
 
-    this.stateScreen = undefined;
     this.pendingReceipts = new Map();
 
     // The launch sequence (launch, initialState.viewModels, mocks, one
@@ -740,6 +739,13 @@ export class JsonUITestRunner {
       flowAttempts++;
       flowError = null;
       const attemptWarnings: string[] = [];
+      // Each attempt starts on no known screen: the first inline step is
+      // verified (and its pending receipt checked) again, not skipped as
+      // "same screen" because the failed attempt got as far as naming it;
+      // and `state` reads nothing until a step names a screen. Also clears
+      // what a previous file left.
+      this.trackedScreen = undefined;
+      this.stateScreen = undefined;
       try {
         // Run setup
         if (test.setup) {
