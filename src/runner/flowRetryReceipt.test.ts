@@ -69,3 +69,41 @@ describe('flow receipts on a retried body', () => {
     expect(second.results[0].warnings ?? []).toEqual([]);
   });
 });
+
+describe('after a file-reference step', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('the next inline step is verified again (trackedScreen is unknown) and `state` reads the last named screen', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { TestLoader } = require('./TestLoader');
+    const browser = new FakeBrowser('http://localhost/', ['login', 'home']);
+    browser.win.__JSONUI_STATE__ = {
+      login: { launchId: null, initialState: null, data: { who: 'login' } },
+      home: { launchId: null, initialState: null, data: { who: 'home' } }
+    };
+    jest.spyOn(TestLoader, 'resolveFileReference').mockImplementation(() => ({
+      type: 'screen', source: { layout: 'Layouts/home.json' }, metadata: { name: 'h' },
+      cases: [{ name: 'a', steps: [{ assert: 'state', path: 'who', equals: 'home', timeout: 0 }] }]
+    }));
+    const runner = new JsonUITestRunner(browser.page(), { screenshotOnFailure: false });
+    const screens: string[] = [];
+    const assertions = (runner as any).assertionExecutor;
+    const original = assertions.execute.bind(assertions);
+    jest.spyOn(assertions, 'execute').mockImplementation(async (...a: unknown[]) => {
+      const step = a[0] as { assert?: string; name?: string };
+      if (step.assert === 'screen') screens.push(String(step.name));
+      return original(...a);
+    });
+    const suite = await runner.runFlowTest({
+      type: 'flow', metadata: { name: 'f' },
+      steps: [
+        { screen: 'login', assert: 'state', path: 'who', equals: 'login', timeout: 0 },
+        { file: 'screens/home' },
+        { screen: 'login', assert: 'state', path: 'who', equals: 'login', timeout: 0 }
+      ]
+    });
+    expect(suite.results[0].error).toBeUndefined();
+    // login verified on arrival, and again after the reference (it may have ended anywhere)
+    expect(screens).toEqual(['login', 'login']);
+  });
+});
