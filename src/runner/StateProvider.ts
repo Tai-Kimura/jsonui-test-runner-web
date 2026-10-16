@@ -33,10 +33,15 @@ export interface StateProvider {
  * the last one named; a referenced case reads its own file's screen).
  */
 export class BridgeStateProvider implements StateProvider {
-  constructor(
-    private page: Page,
-    private screen: () => string | undefined
-  ) {}
+  // Plain fields, not parameter properties: the conformance web host vendors
+  // this file and runs it under Node's type stripping, which rejects them.
+  private page: Page;
+  private screen: () => string | undefined;
+
+  constructor(page: Page, screen: () => string | undefined) {
+    this.page = page;
+    this.screen = screen;
+  }
 
   async lookup(path: string): Promise<StateLookup> {
     const screenId = this.screen();
