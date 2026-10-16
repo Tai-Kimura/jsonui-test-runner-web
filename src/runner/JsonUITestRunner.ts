@@ -35,8 +35,22 @@ import {
 } from '../models/types';
 import { classifyFailure } from './failureReason';
 import { TestLoader } from './TestLoader';
-import { StateProvider } from './StateProvider';
+import { StateProvider, BridgeStateProvider, lookupState, TRUNCATED_MESSAGE } from './StateProvider';
 import { MockClient } from './MockClient';
+import { applyLaunchToPage, clearTestStorage } from './LaunchConfig';
+import {
+  InitialStateScreens,
+  caseNeedsReopen,
+  caseNeedsReopenMessage,
+  flowScreens,
+  launchNeeded,
+  makePayload,
+  referencedInitialStateMessage,
+  referencedInitialStateWarnings,
+  screenTestScreens,
+  writeInitialState
+} from './InitialState';
+import { waitForReceipt } from './StateBridge';
 import { screenIdFromLayout } from './screenIdentity';
 import { defaultOrientationForTier } from './RunDefaults';
 
@@ -86,7 +100,11 @@ export interface TestRunnerConfig {
    * separates "no default declared" from "installed by an older CLI".
    */
   runDefaults?: RunDefaults | null;
-  /** Provider for `state` assertions and `state` conditions */
+  /**
+   * Provider for `state` assertions and `state` conditions. Leave it unset:
+   * the default reads the state bridge the generated hook publishes
+   * (`window.__JSONUI_STATE__[screenId]`). One passed here wins.
+   */
   stateProvider?: StateProvider;
   /** Baseline directory for the `screenshot` assertion (default './baselines') */
   baselineDir?: string;
@@ -211,6 +229,16 @@ export class JsonUITestRunner {
    * Undefined means nothing declared an orientation at all.
    */
   private declaredOrientation: ResponsiveOrientation | undefined;
+  /**
+   * The screen whose bridge `state` reads (spec §6): the screen under test;
+   * in a flow the step's `screen`, else the last one named; inside a
+   * referenced file, that file's screen.
+   */
+  private stateScreen: string | undefined;
+  /** The harness's provider, else the bridge. */
+  private stateProvider: StateProvider;
+  /** Flow: screens whose initialState receipt is still to be checked -> launchId. */
+  private pendingReceipts = new Map<string, string>();
 
   constructor(page: Page, config: TestRunnerConfig = {}) {
     this.config = {
@@ -226,8 +254,9 @@ export class JsonUITestRunner {
     this.actionExecutor.screenshotHandler = async (name: string) => {
       await this.takeScreenshot(`screenshot_${this.currentTestName}_${this.currentCaseName}_${name}`);
     };
+    this.stateProvider = this.config.stateProvider ?? new BridgeStateProvider(page, () => this.stateScreen);
     this.assertionExecutor = new AssertionExecutor(page, this.config.defaultTimeout, {
-      stateProvider: this.config.stateProvider,
+      stateProvider: this.stateProvider,
       baselineDir: this.config.baselineDir,
       updateBaselines: this.config.updateBaselines
     });
@@ -308,12 +337,16 @@ export class JsonUITestRunner {
     // phase name until runTestCase overwrites the case name).
     this.currentTestName = test.metadata.name;
     this.currentCaseName = 'setup';
+    this.stateScreen = screenIdFromLayout(test.source?.layout) ?? undefined;
 
     if (test.caseIsolation === 'reopen') {
       await this.runCasesReopened(test, results);
     } else {
       await this.runCasesShared(test, results);
     }
+
+    // The launch's sessionStorage keys belong to this file only.
+    await this.clearFileStorage();
 
     // Reset mock scenarios so state does not leak into the next test file.
     if (test.mocks && this.mockClient) {
@@ -338,30 +371,40 @@ export class JsonUITestRunner {
    * position, the page it navigated to — so the order of the cases matters.
    */
   private async runCasesShared(test: ScreenTest, results: TestResult[]): Promise<void> {
-    // Apply the file-level mock scenario set BEFORE the screen fetches, then reload
-    // so the screen re-renders against the selected scenarios. (Scenario switching is
-    // per-file for screen tests; there is no per-case re-open unless the file
-    // declares caseIsolation: 'reopen' — see plan §8.1.)
-    if (test.mocks) {
-      this.log('Applying mock scenarios and reloading...');
-      await this.requireMockClient('mocks').scenarioSet(test.mocks);
-      await this.page.reload();
+    // The launch (launch, initialState, mocks, one reload) and, after the
+    // readiness gate, the receipt. A failure of either fails every case as
+    // 'setup' — the body never ran — and teardown still runs. The readiness
+    // gate itself still propagates: the file cannot run at all.
+    let setupError: string | null = null;
+    let screens: InitialStateScreens | null = null;
+    let launchId: string | null | undefined;
+    try {
+      screens = screenTestScreens(test);
+      launchId = await this.openScreen(test, screens, null);
+    } catch (error) {
+      setupError = `launch failed: ${error instanceof Error ? error.message : String(error)}`;
+      this.log(setupError);
+    }
+    if (setupError === null) {
+      this.log('Waiting for UI to be ready...');
+      await this.waitForScreenReady(test);
+      await this.page.waitForTimeout(500);
+      try {
+        await this.awaitReceipts(screens, launchId);
+      } catch (error) {
+        setupError = `launch failed: ${error instanceof Error ? error.message : String(error)}`;
+        this.log(setupError);
+      }
     }
 
-    // Wait for UI to be ready
-    this.log('Waiting for UI to be ready...');
-    await this.waitForScreenReady(test);
-    await this.page.waitForTimeout(500);
-
     // Run setup. If setup throws, every case is recorded as failed but teardown still runs.
-    let setupError: string | null = null;
-    if (test.setup) {
+    if (setupError === null && test.setup) {
       this.log('Running setup...');
       try {
         await this.executeSteps(test.setup, []);
       } catch (error) {
-        setupError = error instanceof Error ? error.message : String(error);
-        this.log(`Setup failed: ${setupError}`);
+        setupError = `setup failed: ${error instanceof Error ? error.message : String(error)}`;
+        this.log(setupError);
       }
     }
 
@@ -372,12 +415,29 @@ export class JsonUITestRunner {
           testName: test.metadata.name,
           caseName: testCase.name,
           passed: false,
-          error: `setup failed: ${setupError}`,
+          error: setupError,
           // The STAGE: the case's own fixture steps failed, so the body
           // never ran and this row says nothing about the app.
           failureReason: 'setup',
           durationMs: 0
         });
+        continue;
+      }
+      const gated = await this.gateCase(test.metadata.name, testCase);
+      if (gated) {
+        results.push(gated);
+        continue;
+      }
+      if (caseNeedsReopen(test, testCase)) {
+        // The file's payload went with the one launch; this case's cannot.
+        results.push(await this.withOrientation({
+          testName: test.metadata.name,
+          caseName: testCase.name,
+          passed: false,
+          error: caseNeedsReopenMessage(testCase.name),
+          failureReason: 'setup',
+          durationMs: 0
+        }));
         continue;
       }
       results.push(await this.runTestCaseWithRetries(test.metadata.name, testCase));
@@ -463,7 +523,7 @@ export class JsonUITestRunner {
     let result: TestResult;
     let stageError: string | null = null;
     try {
-      await this.reopenScreen(test, initialUrl);
+      await this.reopenScreen(test, testCase, initialUrl);
     } catch (error) {
       stageError = `reopen failed: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -499,11 +559,12 @@ export class JsonUITestRunner {
   }
 
   /**
-   * Open the screen afresh for the next case: re-apply the file's mock
-   * scenarios (a case may have switched them), navigate back to the URL the
-   * file started on, and wait for the screen as the file start does.
+   * Open the screen afresh for the next case: the whole launch sequence again
+   * (launch, the file's initialState merged with the case's, the file's mock
+   * scenarios — a case may have switched them), then `goto` the URL the file
+   * started on, the readiness gate and the receipt.
    */
-  private async reopenScreen(test: ScreenTest, initialUrl: string): Promise<void> {
+  private async reopenScreen(test: ScreenTest, testCase: TestCase, initialUrl: string): Promise<void> {
     if (!initialUrl || initialUrl === 'about:blank') {
       throw new Error(
         "caseIsolation 'reopen' re-opens the URL the page was on when the file started, " +
@@ -511,13 +572,77 @@ export class JsonUITestRunner {
       );
     }
     this.log(`Re-opening ${initialUrl} for the next case...`);
-    if (test.mocks) {
-      await this.requireMockClient('mocks').scenarioSet(test.mocks);
-    }
-    await this.page.goto(initialUrl);
-    await this.ensureWindowOpenSpy();
+    const screens = screenTestScreens(test, testCase);
+    const launchId = await this.openScreen(test, screens, initialUrl);
     await this.waitForScreenReady(test);
     await this.page.waitForTimeout(500);
+    await this.awaitReceipts(screens, launchId);
+  }
+
+  /**
+   * Steps 1-6 of the launch sequence for a screen test (spec §10.2):
+   * clearState, permissions, arguments, initialState, mocks, then open
+   * exactly once — `reload` for the file (only when there is something to
+   * launch with), `goto(reopenUrl)` on a reopen (always). Returns what
+   * applyLaunchSequence returns.
+   */
+  private async openScreen(
+    test: ScreenTest,
+    screens: InitialStateScreens | null,
+    reopenUrl: string | null
+  ): Promise<string | null | undefined> {
+    const launchId = await this.applyLaunchSequence(test, screens);
+    if (reopenUrl !== null) {
+      await this.page.goto(reopenUrl);
+    } else if (launchId !== undefined) {
+      this.log('Reloading with the launch applied...');
+      await this.page.reload();
+    }
+    if (reopenUrl !== null || launchId !== undefined) {
+      await this.ensureWindowOpenSpy();
+    }
+    return launchId;
+  }
+
+  /** Step 7: each screen the payload names confirms it (StateBridge.waitForReceipt). */
+  private async awaitReceipts(
+    screens: InitialStateScreens | null,
+    launchId: string | null | undefined
+  ): Promise<void> {
+    if (!launchId || !screens) return;
+    for (const screenId of Object.keys(screens)) {
+      await waitForReceipt(this.page, screenId, launchId, this.config.screenReadyTimeout);
+    }
+  }
+
+  /**
+   * Steps 1-5 of the launch sequence. Returns undefined when the file has
+   * nothing to launch with (no launch, mocks or payload: nothing is done and
+   * nothing is reloaded), else the payload's launchId, or null when the
+   * launch carries no payload.
+   */
+  private async applyLaunchSequence(
+    test: ScreenTest | FlowTest,
+    screens: InitialStateScreens | null
+  ): Promise<string | null | undefined> {
+    if (!launchNeeded(test, screens)) return undefined;
+    await applyLaunchToPage(this.page, test.launch);
+    const payload = screens ? makePayload(screens) : null;
+    await writeInitialState(this.page, payload);
+    if (test.mocks) {
+      this.log('Applying mock scenarios...');
+      await this.requireMockClient('mocks').scenarioSet(test.mocks);
+    }
+    return payload ? payload.launchId : null;
+  }
+
+  /** End of a file: best effort, a closed or blank page has nothing to clear. */
+  private async clearFileStorage(): Promise<void> {
+    try {
+      await clearTestStorage(this.page);
+    } catch (error) {
+      this.log(`Clearing test storage failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /** Run teardown steps; returns the failure message, or null when they passed. */
@@ -570,30 +695,39 @@ export class JsonUITestRunner {
     this.currentTestName = test.metadata.name;
     this.currentCaseName = 'flow';
 
-    // Apply the file-level mock scenario set BEFORE the flow fetches, then reload
-    // so startup runs under the selected scenarios. Parity with runScreenTest
-    // (§8.1); a failure here fails the flow rather than silently running default.
-    if (test.mocks) {
-      try {
-        this.log('Applying flow mock scenarios and reloading...');
-        await this.requireMockClient('mocks').scenarioSet(test.mocks);
+    this.stateScreen = undefined;
+    this.pendingReceipts = new Map();
+
+    // The launch sequence (launch, initialState.viewModels, mocks, one
+    // reload). The receipt of each screen is checked when the flow first
+    // reaches it. A failure here fails the flow rather than running it
+    // against a launch it did not ask for.
+    try {
+      const screens = flowScreens(test);
+      const launchId = await this.applyLaunchSequence(test, screens);
+      if (launchId !== undefined) {
+        this.log('Reloading with the launch applied...');
         await this.page.reload();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const result: TestSuiteResult = {
-          suiteName: test.metadata.name,
-          results: [{
-            testName: test.metadata.name,
-            caseName: 'flow',
-            passed: false,
-            error: message,
-            failureReason: classifyFailure(error),
-            durationMs: Date.now() - startTime
-          }],
-          totalDurationMs: Date.now() - startTime
-        };
-        return result;
+        await this.ensureWindowOpenSpy();
       }
+      if (launchId && screens) {
+        for (const screenId of Object.keys(screens)) this.pendingReceipts.set(screenId, launchId);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.clearFileStorage();
+      return {
+        suiteName: test.metadata.name,
+        results: [{
+          testName: test.metadata.name,
+          caseName: 'flow',
+          passed: false,
+          error: `launch failed: ${message}`,
+          failureReason: 'setup',
+          durationMs: Date.now() - startTime
+        }],
+        totalDurationMs: Date.now() - startTime
+      };
     }
 
     // The flow body (setup + steps) is the retry unit: flows begin with
@@ -622,6 +756,14 @@ export class JsonUITestRunner {
       }
       if (flowError === null || flowAttempts >= maxAttempts) {
         warnings.push(...attemptWarnings);
+        if (flowError === null) {
+          for (const screenId of this.pendingReceipts.keys()) {
+            warnings.push(
+              `initialState for screen '${screenId}' was never checked: the flow never reached it ` +
+              '(no step names that screen)'
+            );
+          }
+        }
       } else {
         this.log(`  Flow failed — retry attempt ${flowAttempts + 1}/${maxAttempts}`);
       }
@@ -656,6 +798,8 @@ export class JsonUITestRunner {
         });
       }
     }
+
+    await this.clearFileStorage();
 
     // Reset mock scenarios so a flow's setMocks state does not leak to the next test.
     if (this.mockClient) {
@@ -954,13 +1098,12 @@ export class JsonUITestRunner {
       }
     }
     if (condition.state !== undefined) {
-      if (!this.config.stateProvider) {
-        throw new Error(
-          `Cannot evaluate state condition '${condition.state.path}': no state provider configured`
-        );
+      const found = await lookupState(this.stateProvider, condition.state.path);
+      if (found.outcome === 'truncated') {
+        throw new Error(TRUNCATED_MESSAGE(condition.state.path, found.bytes));
       }
-      const actual = await this.config.stateProvider.getValue(condition.state.path);
-      if (!deepEquals(actual, condition.state.equals)) {
+      // Pending / unresolved is "not met" — a condition does not wait.
+      if (found.outcome !== 'value' || !deepEquals(found.value, condition.state.equals)) {
         return false;
       }
     }
@@ -1081,18 +1224,32 @@ export class JsonUITestRunner {
    * the step, because the step is meant to run ON that screen.
    */
   private async verifyScreenTransitionIfNeeded(step: FlowTestStep): Promise<void> {
-    if (!this.config.verifyScreenTransitions) return;
     const screen = step.screen;
     if (!screen) return;
     // Same screen as the last executed step: nothing has changed.
     if (screen === this.trackedScreen) return;
 
-    await this.assertionExecutor.execute({
-      assert: 'screen',
-      name: screen,
-      timeout: this.config.screenTransitionTimeout,
-    } as TestStep);
+    if (this.config.verifyScreenTransitions) {
+      await this.assertionExecutor.execute({
+        assert: 'screen',
+        name: screen,
+        timeout: this.config.screenTransitionTimeout,
+      } as TestStep);
+    }
     this.trackedScreen = screen;
+    await this.checkReceiptOnArrival(screen);
+  }
+
+  /**
+   * Flow: the first time the flow reaches a screen its initialState names,
+   * the screen must have confirmed it (same judgement as a screen test).
+   */
+  private async checkReceiptOnArrival(screen: string): Promise<void> {
+    const launchId = this.pendingReceipts.get(screen);
+    if (launchId === undefined) return;
+    await waitForReceipt(this.page, screen, launchId, this.config.screenReadyTimeout);
+    // Only once it passed: a retried flow body checks it again.
+    this.pendingReceipts.delete(screen);
   }
 
   private async executeFlowStep(step: FlowTestStep, warnings: string[]): Promise<void> {
@@ -1119,6 +1276,7 @@ export class JsonUITestRunner {
     }
 
     // Handle inline steps - convert FlowTestStep to TestStep and execute
+    if (step.screen) this.stateScreen = step.screen;
     await this.verifyScreenTransitionIfNeeded(step);
     await this.executeStepGuarded(this.toTestStep(step), warnings);
   }
@@ -1135,8 +1293,22 @@ export class JsonUITestRunner {
   }
 
   private async executeFileReferenceStep(step: FlowTestStep, warnings: string[]): Promise<void> {
+    const referenced = TestLoader.resolveFileReference(step.file as string);
     const testCases = TestLoader.resolveFileReferenceCases(step);
+    for (const w of referencedInitialStateWarnings(step, referenced)) {
+      warnings.push(referencedInitialStateMessage(w));
+    }
+    // A referenced case reads state from its own file's screen.
+    const outerStateScreen = this.stateScreen;
+    this.stateScreen = screenIdFromLayout(referenced.source?.layout) ?? outerStateScreen;
+    try {
+      await this.runReferencedCases(testCases, warnings);
+    } finally {
+      this.stateScreen = outerStateScreen;
+    }
+  }
 
+  private async runReferencedCases(testCases: TestCase[], warnings: string[]): Promise<void> {
     for (const testCase of testCases) {
       // Skip if marked to skip
       if (testCase.skip) {

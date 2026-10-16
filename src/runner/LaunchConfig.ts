@@ -1,10 +1,18 @@
 /**
  * JsonUI Test Runner - Web Driver
- * Launch configuration helper (applied before the app under test starts)
+ * Launch configuration, applied by the runner (spec §5, §10.2 steps 1-3).
+ *
+ * There is no helper for the harness to call: the runner applies `launch`
+ * on the page it is driving, then writes the initialState payload, switches
+ * the mocks and reloads once (`goto` on a reopen).
  */
 
-import { BrowserContext } from 'playwright';
+import { Page } from 'playwright';
 import { LaunchConfig } from '../models/types';
+import { INITIAL_STATE_KEY } from './InitialState';
+
+/** sessionStorage key the arguments travel in. */
+export const ARGS_KEY = 'JSONUI_TEST_ARGS';
 
 /**
  * Cross-platform permission names mapped to Playwright permission names.
@@ -17,73 +25,74 @@ const WEB_PERMISSION_MAP: Record<string, string> = {
   notifications: 'notifications'
 };
 
-/**
- * Apply a launch configuration to a browser context.
- * Call this BEFORE navigating to the app under test.
- *
- * - clearState: clears cookies and local/session storage (for originUrl when given,
- *   otherwise for every currently open page)
- * - permissions: 'allow' -> grantPermissions, 'unset' -> clearPermissions first,
- *   'deny' -> not granted (Playwright denies non-granted permissions by default)
- * - arguments: written to sessionStorage["JSONUI_TEST_ARGS"] as JSON via an init
- *   script so the value survives navigation
- */
-export async function applyLaunchConfig(
-  context: BrowserContext,
-  launch: LaunchConfig,
-  originUrl?: string
-): Promise<void> {
-  if (launch.clearState) {
-    await context.clearCookies();
+/** True for a page with no origin to hold storage (nothing navigated yet). */
+export function isBlank(url: string): boolean {
+  return !url || url === 'about:blank';
+}
 
-    if (originUrl) {
-      // Storage is per-origin; open a throwaway page on the origin to clear it
-      const page = await context.newPage();
-      try {
-        await page.goto(originUrl);
-        await page.evaluate(() => {
-          window.localStorage.clear();
-          window.sessionStorage.clear();
-        });
-      } finally {
-        await page.close();
-      }
-    } else {
-      // Best effort: clear storage on every currently open page
-      for (const page of context.pages()) {
-        try {
-          await page.evaluate(() => {
-            window.localStorage.clear();
-            window.sessionStorage.clear();
-          });
-        } catch {
-          // Pages without an origin (about:blank) cannot access storage - ignore
-        }
-      }
-    }
+/**
+ * Steps 1-3 of the launch sequence on the page under test:
+ *
+ * 1. clearState — cookies, and the origin's local and session storage
+ *    (IndexedDB is not touched).
+ * 2. permissions — when any value is `deny` or `unset`, clear every
+ *    permission first, then grant the `allow`s again. (Clearing only for
+ *    `unset` left an earlier file's `allow` in place.)
+ * 3. arguments — `sessionStorage["JSONUI_TEST_ARGS"]` (JSON); removed when
+ *    this launch has none.
+ *
+ * The page must already be on the app's origin: storage belongs to an origin
+ * and the reload that follows reopens the same URL.
+ */
+export async function applyLaunchToPage(page: Page, launch: LaunchConfig | undefined): Promise<void> {
+  const url = page.url();
+  if (isBlank(url)) {
+    throw new Error(
+      `launch is applied on the page under test, and the page is on '${url || '(none)'}'. ` +
+      'Navigate to the screen before running the file.'
+    );
+  }
+  const context = page.context();
+
+  if (launch?.clearState) {
+    await context.clearCookies();
+    await page.evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
   }
 
-  if (launch.permissions) {
+  if (launch?.permissions) {
     const entries = Object.entries(launch.permissions);
-
-    // 'unset' resets to the default (prompt) state; Playwright can only clear all at once
-    if (entries.some(([, value]) => value === 'unset')) {
+    if (entries.some(([, value]) => value === 'deny' || value === 'unset')) {
       await context.clearPermissions();
     }
-
     const granted = entries
       .filter(([name, value]) => value === 'allow' && WEB_PERMISSION_MAP[name] !== undefined)
       .map(([name]) => WEB_PERMISSION_MAP[name]);
-
     if (granted.length > 0) {
-      await context.grantPermissions(granted, originUrl ? { origin: originUrl } : undefined);
+      await context.grantPermissions(granted, { origin: new URL(url).origin });
     }
   }
 
-  if (launch.arguments) {
-    // Runs before any page script on every navigation, so the value survives reloads
-    await context.addInitScript((args) => {
-      window.sessionStorage.setItem('JSONUI_TEST_ARGS', JSON.stringify(args));
-    }, launch.arguments);
-  }
+  const args = launch?.arguments;
+  await page.evaluate(
+    ([key, json]) => {
+      if (json === null) window.sessionStorage.removeItem(key);
+      else window.sessionStorage.setItem(key, json);
+    },
+    [ARGS_KEY, args === undefined ? null : JSON.stringify(args)] as [string, string | null]
+  );
+}
+
+/**
+ * End of a file: remove what the runner put in sessionStorage so the next file
+ * starts without it. A page with no origin has nothing to remove.
+ */
+export async function clearTestStorage(page: Page): Promise<void> {
+  if (isBlank(page.url())) return;
+  await page.evaluate(([a, b]) => {
+    window.sessionStorage.removeItem(a);
+    window.sessionStorage.removeItem(b);
+  }, [ARGS_KEY, INITIAL_STATE_KEY] as [string, string]);
 }

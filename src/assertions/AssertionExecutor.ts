@@ -16,7 +16,7 @@ import { Page, Locator } from 'playwright';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { TestStep, deepEquals } from '../models/types';
-import { StateProvider } from '../runner/StateProvider';
+import { StateProvider, lookupState, TRUNCATED_MESSAGE } from '../runner/StateProvider';
 
 /** Polling interval for auto-wait assertions */
 const POLL_INTERVAL_MS = 100;
@@ -329,10 +329,20 @@ export class AssertionExecutor {
     }
     const provider = this.stateProvider;
     await this.pollUntil(timeout, async () => {
-      const actual = await provider.getValue(statePath);
-      return deepEquals(actual, step.equals)
-        ? null
-        : `State '${statePath}' should be ${JSON.stringify(step.equals)} but got ${JSON.stringify(actual)}`;
+      const found = await lookupState(provider, statePath);
+      switch (found.outcome) {
+        case 'truncated':
+          // Fails at once: no amount of waiting makes a truncated bridge readable.
+          throw new Error(TRUNCATED_MESSAGE(statePath, found.bytes));
+        case 'pending':
+          return `State '${statePath}' should be ${JSON.stringify(step.equals)}, but ${found.reason}`;
+        case 'unresolved':
+          return `State '${statePath}' should be ${JSON.stringify(step.equals)} but the path does not resolve`;
+        case 'value':
+          return deepEquals(found.value, step.equals)
+            ? null
+            : `State '${statePath}' should be ${JSON.stringify(step.equals)} but got ${JSON.stringify(found.value)}`;
+      }
     });
   }
 

@@ -8,7 +8,7 @@ export interface ScreenTest {
     metadata: TestMetadata;
     platform?: PlatformTarget;
     initialState?: InitialState;
-    /** App launch configuration (apply via applyLaunchConfig before navigation) */
+    /** App launch configuration — the runner applies it (spec §5, §10.2) */
     launch?: LaunchConfig;
     /** API mock scenario set applied (and the screen reloaded) before the cases run */
     mocks?: MockScenarioMap;
@@ -69,6 +69,11 @@ export interface TestMetadata {
     generatedBy?: string;
     tags?: string[];
 }
+/**
+ * Values for the screen under test's Data (layout `data` names, top level),
+ * delivered in the launch's payload and confirmed by the app (spec §10).
+ * A case-level one needs caseIsolation 'reopen'.
+ */
 export interface InitialState {
     viewModel?: Record<string, unknown>;
 }
@@ -90,7 +95,7 @@ export interface FlowTest {
     metadata: TestMetadata;
     platform?: PlatformTarget;
     initialState?: FlowInitialState;
-    /** App launch configuration (apply via applyLaunchConfig before navigation) */
+    /** App launch configuration — the runner applies it (spec §5, §10.2) */
     launch?: LaunchConfig;
     /**
      * File-level mock scenarios (operationId -> scenario) applied before the
@@ -116,7 +121,11 @@ export interface FlowTestSource {
     alias?: string;
 }
 export interface FlowInitialState {
-    screen?: string;
+    /**
+     * Payload screens for the flow's launch: screen id (the value the steps
+     * write in `screen`) -> Data name -> value. Each screen's receipt is
+     * checked the first time the flow reaches it.
+     */
     viewModels?: Record<string, Record<string, unknown>>;
 }
 export interface FlowTestStep {

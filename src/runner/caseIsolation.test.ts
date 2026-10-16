@@ -31,7 +31,8 @@ function makeFakePage(calls: Calls, url = 'http://localhost/screen?x=1'): Page {
       }
       throw new Error(`fake page: unmodelled selector ${selector}`);
     },
-    addInitScript: async () => undefined
+    addInitScript: async () => undefined,
+    context: () => ({})
   };
   return fake as unknown as Page;
 }
@@ -210,5 +211,78 @@ describe('TestLoader caseIsolation', () => {
   it('rejects a misspelt value instead of running it as shared', () => {
     expect(() => TestLoader.loadFromString(write({ ...base, caseIsolation: 'reOpen' })))
       .toThrow(/unknown caseIsolation/);
+  });
+});
+
+describe('caseIsolation × initialState', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { FakeBrowser, fakeApp } = require('../__testing__/fakeBrowser');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { INITIAL_STATE_KEY } = require('./InitialState');
+
+  afterEach(() => jest.restoreAllMocks());
+
+  function caseTest(extra: Partial<ScreenTest>): ScreenTest {
+    return {
+      type: 'screen',
+      source: { layout: 'layouts/test_screen.json' },
+      metadata: { name: 'iso' },
+      initialState: { viewModel: { email: 'file', password: 'p' } },
+      cases: [
+        { name: 'a', steps: [{ assert: 'state', path: 'email', equals: 'file' } as TestStep] },
+        {
+          name: 'b',
+          initialState: { viewModel: { email: 'case-b' } },
+          steps: [{ assert: 'state', path: 'email', equals: 'case-b' } as TestStep]
+        }
+      ],
+      ...extra
+    };
+  }
+
+  it("'reopen' delivers file ⊕ case per case, each with a fresh launchId, by goto", async () => {
+    const browser = new FakeBrowser('http://localhost/screen?x=1');
+    const payloads: { launchId: string; screens: Record<string, unknown> }[] = [];
+    const app = fakeApp('test_screen', { email: '', password: '' });
+    browser.onLoad = (win: any) => {
+      payloads.push(JSON.parse(win.sessionStorage.getItem(INITIAL_STATE_KEY)));
+      app(win);
+    };
+    const runner = new JsonUITestRunner(browser.page(), { screenshotOnFailure: false, screenReadyTimeout: 50 });
+    const suite = await runner.runScreenTest(caseTest({ caseIsolation: 'reopen' }));
+    expect(suite.results.map(r => [r.caseName, r.passed, r.error])).toEqual([
+      ['a', true, undefined], ['b', true, undefined]
+    ]);
+    expect(payloads.map(p => p.screens)).toEqual([
+      { test_screen: { email: 'file', password: 'p' } },
+      { test_screen: { email: 'case-b', password: 'p' } }
+    ]);
+    expect(payloads[0].launchId).not.toEqual(payloads[1].launchId);
+    expect(browser.log.filter((e: string) => e.startsWith('goto:'))).toHaveLength(2);
+    expect(browser.log).not.toContain('reload');
+  });
+
+  it("'reopen': a case whose receipt does not come fails as setup, the others still run", async () => {
+    const browser = new FakeBrowser('http://localhost/screen');
+    let n = 0;
+    const ok = fakeApp('test_screen', { email: '', password: '' });
+    const closed = fakeApp('test_screen', { email: '', password: '' }, { gateClosed: true });
+    browser.onLoad = (win: any) => { n++; (n === 1 ? closed : ok)(win); };
+    const runner = new JsonUITestRunner(browser.page(), { screenshotOnFailure: false, screenReadyTimeout: 30 });
+    const suite = await runner.runScreenTest(caseTest({ caseIsolation: 'reopen' }));
+    expect(suite.results[0]).toMatchObject({ caseName: 'a', passed: false, failureReason: 'setup' });
+    expect(suite.results[0].error).toContain('no receipt');
+    expect(suite.results[1]).toMatchObject({ caseName: 'b', passed: true });
+  });
+
+  it("'shared': a case-level initialState fails that case only, the file payload still goes", async () => {
+    const browser = new FakeBrowser('http://localhost/screen');
+    browser.onLoad = fakeApp('test_screen', { email: '', password: '' });
+    const runner = new JsonUITestRunner(browser.page(), { screenshotOnFailure: false, screenReadyTimeout: 50 });
+    const suite = await runner.runScreenTest(caseTest({}));
+    expect(suite.results[0]).toMatchObject({ caseName: 'a', passed: true });
+    expect(suite.results[1]).toMatchObject({ caseName: 'b', passed: false, failureReason: 'setup' });
+    expect(suite.results[1].error).toMatch(/^\[case-initial-state-needs-reopen\]/);
+    expect(browser.log.filter((e: string) => e === 'reload')).toHaveLength(1);
   });
 });

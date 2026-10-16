@@ -48,7 +48,11 @@ export interface TestRunnerConfig {
      * separates "no default declared" from "installed by an older CLI".
      */
     runDefaults?: RunDefaults | null;
-    /** Provider for `state` assertions and `state` conditions */
+    /**
+     * Provider for `state` assertions and `state` conditions. Leave it unset:
+     * the default reads the state bridge the generated hook publishes
+     * (`window.__JSONUI_STATE__[screenId]`). One passed here wins.
+     */
     stateProvider?: StateProvider;
     /** Baseline directory for the `screenshot` assertion (default './baselines') */
     baselineDir?: string;
@@ -122,6 +126,16 @@ export declare class JsonUITestRunner {
      * Undefined means nothing declared an orientation at all.
      */
     private declaredOrientation;
+    /**
+     * The screen whose bridge `state` reads (spec §6): the screen under test;
+     * in a flow the step's `screen`, else the last one named; inside a
+     * referenced file, that file's screen.
+     */
+    private stateScreen;
+    /** The harness's provider, else the bridge. */
+    private stateProvider;
+    /** Flow: screens whose initialState receipt is still to be checked -> launchId. */
+    private pendingReceipts;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
      * Make sure the CURRENT document has the window.open spy too — the runner
@@ -163,11 +177,31 @@ export declare class JsonUITestRunner {
     /** One reopen → setup → case → teardown pass for `runCasesReopened`. */
     private runReopenedAttempt;
     /**
-     * Open the screen afresh for the next case: re-apply the file's mock
-     * scenarios (a case may have switched them), navigate back to the URL the
-     * file started on, and wait for the screen as the file start does.
+     * Open the screen afresh for the next case: the whole launch sequence again
+     * (launch, the file's initialState merged with the case's, the file's mock
+     * scenarios — a case may have switched them), then `goto` the URL the file
+     * started on, the readiness gate and the receipt.
      */
     private reopenScreen;
+    /**
+     * Steps 1-6 of the launch sequence for a screen test (spec §10.2):
+     * clearState, permissions, arguments, initialState, mocks, then open
+     * exactly once — `reload` for the file (only when there is something to
+     * launch with), `goto(reopenUrl)` on a reopen (always). Returns what
+     * applyLaunchSequence returns.
+     */
+    private openScreen;
+    /** Step 7: each screen the payload names confirms it (StateBridge.waitForReceipt). */
+    private awaitReceipts;
+    /**
+     * Steps 1-5 of the launch sequence. Returns undefined when the file has
+     * nothing to launch with (no launch, mocks or payload: nothing is done and
+     * nothing is reloaded), else the payload's launchId, or null when the
+     * launch carries no payload.
+     */
+    private applyLaunchSequence;
+    /** End of a file: best effort, a closed or blank page has nothing to clear. */
+    private clearFileStorage;
     /** Run teardown steps; returns the failure message, or null when they passed. */
     private runTeardown;
     /**
@@ -252,9 +286,15 @@ export declare class JsonUITestRunner {
      * the step, because the step is meant to run ON that screen.
      */
     private verifyScreenTransitionIfNeeded;
+    /**
+     * Flow: the first time the flow reaches a screen its initialState names,
+     * the screen must have confirmed it (same judgement as a screen test).
+     */
+    private checkReceiptOnArrival;
     private executeFlowStep;
     private executeBlockStep;
     private executeFileReferenceStep;
+    private runReferencedCases;
     /** Convert a FlowTestStep (inline / block child) into a TestStep for execution */
     private toTestStep;
     private stepDescription;

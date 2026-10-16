@@ -17,7 +17,7 @@ export { AssertionExecutor } from './assertions/AssertionExecutor';
 // Runner
 export { TestLoader } from './runner/TestLoader';
 export { JsonUITestRunner, TestRunnerBuilder, TestRunnerConfig } from './runner/JsonUITestRunner';
-export { StateProvider, WindowStateProvider } from './runner/StateProvider';
+export { StateProvider, BridgeStateProvider } from './runner/StateProvider';
 export { MockClient } from './runner/MockClient';
 export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
 export {
@@ -28,7 +28,24 @@ export {
   RunDefaultsLoad,
   RunDefaultsMiss
 } from './runner/RunDefaults';
-export { applyLaunchConfig } from './runner/LaunchConfig';
+export { applyLaunchToPage, clearTestStorage, ARGS_KEY } from './runner/LaunchConfig';
+export {
+  INITIAL_STATE_KEY,
+  InitialStatePayload,
+  InitialStateScreens,
+  planLaunches,
+  LaunchPlan,
+  PlannedLaunch
+} from './runner/InitialState';
+export {
+  readBridge,
+  waitForReceipt,
+  resolveStatePath,
+  lookupInBridge,
+  BridgeSnapshot,
+  InitialStateReceipt,
+  StateLookup
+} from './runner/StateBridge';
 
 // Convenience function for creating test runners
 import { TestRunnerBuilder } from './runner/JsonUITestRunner';

@@ -5,7 +5,7 @@ Playwright-based test runner for ReactJsonUI applications. Executes JSON-defined
 ## Installation
 
 ```bash
-npm install @jsonui/test-runner-web playwright
+npm install jsonui-test-runner-web playwright
 ```
 
 ## Usage
@@ -14,7 +14,7 @@ npm install @jsonui/test-runner-web playwright
 
 ```typescript
 import { test } from '@playwright/test';
-import { JsonUITestRunner, TestLoader } from '@jsonui/test-runner-web';
+import { JsonUITestRunner, TestLoader } from 'jsonui-test-runner-web';
 
 test('login screen test', async ({ page }) => {
   // Navigate to your app
@@ -41,7 +41,7 @@ test('login screen test', async ({ page }) => {
 ### Using the Builder Pattern
 
 ```typescript
-import { createRunner, TestLoader } from '@jsonui/test-runner-web';
+import { createRunner, TestLoader } from 'jsonui-test-runner-web';
 
 test('home screen test', async ({ page }) => {
   await page.goto('http://localhost:3000');
@@ -69,7 +69,7 @@ test('home screen test', async ({ page }) => {
 ### Loading Tests
 
 ```typescript
-import { TestLoader } from '@jsonui/test-runner-web';
+import { TestLoader } from 'jsonui-test-runner-web';
 
 // Load from file
 const test = TestLoader.loadFromFile('./tests/login.test.json');
@@ -190,7 +190,8 @@ interface TestRunnerConfig {
   platform?: string;            // Default: 'web'
   verbose?: boolean;            // Default: false
   screenReadyStrategy?: 'auto' | 'marker' | 'networkidle';  // Default: 'auto'
-  screenReadyTimeout?: number;  // Default: 15000ms
+  screenReadyTimeout?: number;  // Default: 15000ms (also the initialState receipt timeout)
+  stateProvider?: StateProvider; // Default: the state bridge (leave unset)
 }
 ```
 
@@ -287,6 +288,55 @@ Tests can be platform-specific:
   ]
 }
 ```
+
+## Launch, initialState and state
+
+The runner applies everything itself — there is no helper for the harness to
+call. When a file has a `launch`, `mocks` or a non-empty `initialState`, the
+runner does, in this order, on the page it drives:
+
+1. **clearState** — cookies, and the origin's local and session storage
+   (IndexedDB is not touched).
+2. **permissions** — when any value is `deny` or `unset`, every permission is
+   cleared first, then the `allow`s are granted again (so an earlier file's
+   `allow` never survives a `deny`).
+3. **arguments** — `sessionStorage["JSONUI_TEST_ARGS"]` (JSON).
+4. **initialState** — `sessionStorage["JSONUI_TEST_INITIAL_STATE"]`:
+   `{ "version": 1, "launchId": "<uuid>", "screens": { "<screenId>": { … } } }`.
+5. **mocks** — the scenario set.
+6. **one `reload`** (`goto` the file's starting URL on a `caseIsolation:
+   "reopen"` case).
+7. **receipt** — the screen confirms the payload on its state bridge; no
+   receipt, or any rejected key, fails the cases with `failureReason: "setup"`.
+
+At the end of each file the runner removes `JSONUI_TEST_ARGS` and
+`JSONUI_TEST_INITIAL_STATE` from sessionStorage. The page must already be on
+the app (not `about:blank`) when a file with a launch starts. Reading
+`JSONUI_TEST_ARGS` in the app is the app's business.
+
+**initialState** keys are the screen's Data names (the layout's `data`
+section, top level); the generated hook applies them once after mount,
+checks each value against the declared class and reports what it applied and
+rejected (`not a data field`, `type mismatch: expected <class>`,
+`null for non-optional <class>`, `unsupported type <class>`). A case-level
+`initialState` needs `caseIsolation: "reopen"` (in a `shared` file that case
+fails with `case-initial-state-needs-reopen`). In a flow,
+`initialState.viewModels` is keyed by screen id and each screen is checked
+the first time the flow reaches it; a referenced file's / case's own
+initialState is not applied inside a flow (warning
+`referenced-initial-state-ignored`).
+
+**state** (`assert: "state"` and `when.state`) needs nothing from the
+harness: the default provider reads `window.__JSONUI_STATE__[screenId].data`
+— the screen under test; in a flow the step's `screen`, else the last one a
+step named; inside a referenced file, that file's screen. A `stateProvider`
+passed in the config still wins.
+
+The receiving side and the bridge come from the code `jui build` generates
+(rjui's `useJsonUITestBridge`, called by every generated ViewModel hook; a
+hand-written page calls it itself) and run only while
+`NODE_ENV !== 'production'`. A production build therefore fails a file with
+an initialState with "no receipt" — by design.
 
 ## API mocks
 

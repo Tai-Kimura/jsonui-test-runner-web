@@ -53,6 +53,7 @@ const reasonHistory_1 = require("./reasonHistory");
 const pngjs_1 = require("pngjs");
 const pixelmatch_1 = __importDefault(require("pixelmatch"));
 const types_1 = require("../models/types");
+const StateProvider_1 = require("../runner/StateProvider");
 /** Polling interval for auto-wait assertions */
 const POLL_INTERVAL_MS = 100;
 /** RGBA channel difference (0-255) below which two pixels are considered a match */
@@ -319,10 +320,20 @@ class AssertionExecutor {
         }
         const provider = this.stateProvider;
         await this.pollUntil(timeout, async () => {
-            const actual = await provider.getValue(statePath);
-            return (0, types_1.deepEquals)(actual, step.equals)
-                ? null
-                : `State '${statePath}' should be ${JSON.stringify(step.equals)} but got ${JSON.stringify(actual)}`;
+            const found = await (0, StateProvider_1.lookupState)(provider, statePath);
+            switch (found.outcome) {
+                case 'truncated':
+                    // Fails at once: no amount of waiting makes a truncated bridge readable.
+                    throw new Error((0, StateProvider_1.TRUNCATED_MESSAGE)(statePath, found.bytes));
+                case 'pending':
+                    return `State '${statePath}' should be ${JSON.stringify(step.equals)}, but ${found.reason}`;
+                case 'unresolved':
+                    return `State '${statePath}' should be ${JSON.stringify(step.equals)} but the path does not resolve`;
+                case 'value':
+                    return (0, types_1.deepEquals)(found.value, step.equals)
+                        ? null
+                        : `State '${statePath}' should be ${JSON.stringify(step.equals)} but got ${JSON.stringify(found.value)}`;
+            }
         });
     }
     /**
