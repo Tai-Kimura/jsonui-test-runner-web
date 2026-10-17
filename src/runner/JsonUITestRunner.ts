@@ -407,7 +407,9 @@ export class JsonUITestRunner {
   /**
    * The records of a row decided without attempts: a skipped row is the one
    * attempt-0 case_end; a row failed before its body could run (launch,
-   * setup, needs-reopen) is one attempt that failed. Returns the row.
+   * setup, needs-reopen) or added for a failed teardown is one attempt that
+   * failed — every results.json row has its case lines, so the last
+   * case_end of each adds up to run_end. Returns the row.
    */
   private progressRow(result: TestResult): TestResult {
     if (result.skipped) {
@@ -571,7 +573,7 @@ export class JsonUITestRunner {
       this.currentCaseName = 'teardown';
       const message = await this.runTeardown(test.teardown);
       if (message !== null) {
-        results.push({
+        results.push(this.progressRow({
           testName: test.metadata.name,
           caseName: 'teardown',
           passed: false,
@@ -579,7 +581,7 @@ export class JsonUITestRunner {
           // A teardown failure is a teardown failure whatever threw it.
           failureReason: 'teardown',
           durationMs: 0
-        });
+        }));
       }
     }
   }
@@ -624,14 +626,14 @@ export class JsonUITestRunner {
       results.push(result);
 
       if (teardownError !== null) {
-        results.push({
+        results.push(this.progressRow({
           testName: test.metadata.name,
           caseName: 'teardown',
           passed: false,
           error: `after case '${testCase.name}': ${teardownError}`,
           failureReason: 'teardown',
           durationMs: 0
-        });
+        }));
       }
     }
   }
@@ -932,7 +934,7 @@ export class JsonUITestRunner {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.log(`Flow teardown failed: ${message}`);
-        results.push({
+        results.push(this.progressRow({
           testName: test.metadata.name,
           caseName: 'teardown',
           passed: false,
@@ -940,7 +942,7 @@ export class JsonUITestRunner {
           // A teardown failure is a teardown failure whatever threw it.
           failureReason: 'teardown',
           durationMs: 0
-        });
+        }));
       }
     }
 

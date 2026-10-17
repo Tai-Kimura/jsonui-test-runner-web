@@ -201,7 +201,9 @@ export declare class JsonUITestRunner {
     /**
      * The records of a row decided without attempts: a skipped row is the one
      * attempt-0 case_end; a row failed before its body could run (launch,
-     * setup, needs-reopen) is one attempt that failed. Returns the row.
+     * setup, needs-reopen) or added for a failed teardown is one attempt that
+     * failed — every results.json row has its case lines, so the last
+     * case_end of each adds up to run_end. Returns the row.
      */
     private progressRow;
     /**

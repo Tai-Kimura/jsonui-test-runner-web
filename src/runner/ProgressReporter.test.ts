@@ -203,7 +203,7 @@ function makeRunner(caseRetries = 1, extra: Record<string, unknown> = {}): JsonU
   return runner;
 }
 
-function readRun(dir: string): Record<string, unknown>[] {
+function readRun(dir: string): Record<string, any>[] {
   const files = fs.readdirSync(dir);
   expect(files).toHaveLength(1);
   expect(files[0]).toMatch(/^[0-9a-f-]{36}\.jsonl$/);
@@ -293,6 +293,58 @@ describe('the runner emits progress records', () => {
       ['run_start', null, null],
       ['case_end', 0, 'skipped'],
       ['run_end', null, null]
+    ]);
+  });
+
+  it('every results.json row has case lines: the last case_end of each adds up to run_end (teardown and launch failures included)', async () => {
+    const TEARDOWN_FAIL: TestStep[] = [{ action: 'wait', ms: 3 } as TestStep];
+    const runner = makeRunner(1, { verifyScreenTransitions: false });
+    jest.spyOn(runner as any, 'executeSteps').mockImplementation(async (...args: unknown[]) => {
+      if (args[0] === FAIL) throw new Error('boom');
+      if (args[0] === TEARDOWN_FAIL) throw new Error('teardown boom');
+    });
+    runner.beginRun(3);
+    const suites = [
+      await runner.runScreenTest({ ...screenTest(), teardown: TEARDOWN_FAIL }, '/tests/shared.test.json'),
+      await runner.runScreenTest(
+        { ...screenTest(), caseIsolation: 'reopen', teardown: TEARDOWN_FAIL }, '/tests/reopen.test.json'
+      )
+    ];
+    jest.spyOn(runner as any, 'applyLaunchSequence').mockImplementation(async () => { throw new Error('launch boom'); });
+    const flow = {
+      type: 'flow', metadata: { name: 'LaunchFails' }, steps: [{ screen: 'test_screen', action: 'wait', ms: 1 }]
+    } as unknown as FlowTest;
+    suites.push(await runner.runFlowTest(flow, '/tests/flow.test.json'));
+    runner.endRun();
+
+    const rows = suites.flatMap(s => s.results);
+    // The rows this arm is about are really there.
+    expect(rows.filter(r => r.caseName === 'teardown')).toHaveLength(3);
+    expect(rows.find(r => r.testName === 'LaunchFails')).toMatchObject({ passed: false, failureReason: 'setup' });
+
+    const lines = readRun(tmp);
+    // A case_end is its row's last unless the next line starts the same case's next attempt.
+    const last = lines.filter((l, i) => {
+      if (l.event !== 'case_end') return false;
+      const next = lines[i + 1];
+      return !(next && next.event === 'case_start' && next.file === l.file && next.test === l.test &&
+        next.case === l.case && next.attempt === l.attempt + 1);
+    });
+    expect(last.map(l => [l.test, l.case, l.status])).toEqual(
+      rows.map(r => [r.testName, r.caseName, r.skipped ? 'skipped' : r.passed ? 'passed' : 'failed'])
+    );
+    const count = (status: string) => last.filter(l => l.status === status).length;
+    const end = lines[lines.length - 1];
+    expect(end.event).toBe('run_end');
+    expect({ passed: count('passed'), failed: count('failed'), skipped: count('skipped') })
+      .toEqual({ passed: end.passed, failed: end.failed, skipped: end.skipped });
+    expect(end).toMatchObject({ passed: 2, failed: 6, skipped: 2 });
+    // A teardown row is one attempt-1 pair named as results.json names it.
+    const teardown = lines.filter(l => l.case === 'teardown');
+    expect(teardown.map(l => [l.event, l.attempt, l.status ?? null])).toEqual([
+      ['case_start', 1, null], ['case_end', 1, 'failed'],
+      ['case_start', 1, null], ['case_end', 1, 'failed'],
+      ['case_start', 1, null], ['case_end', 1, 'failed']
     ]);
   });
 
