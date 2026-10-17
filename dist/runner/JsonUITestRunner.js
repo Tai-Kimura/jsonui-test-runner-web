@@ -223,7 +223,7 @@ class JsonUITestRunner {
     /** The test file relative to testsDir (default: the working directory), '/'-separated. */
     progressFileName(testPath) {
         if (!testPath)
-            return '';
+            return ProgressReporter_1.PROGRESS_INLINE_FILE;
         const root = path.resolve(this.config.testsDir ?? process.cwd());
         return path.relative(root, path.resolve(testPath)).split(path.sep).join('/');
     }

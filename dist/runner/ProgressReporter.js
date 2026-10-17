@@ -45,7 +45,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ProgressReporter = exports.PROGRESS_MAX_CHARS = exports.PROGRESS_DIR_ENV = exports.PROGRESS_VERSION = void 0;
+exports.ProgressReporter = exports.PROGRESS_INLINE_FILE = exports.PROGRESS_MAX_CHARS = exports.PROGRESS_DIR_ENV = exports.PROGRESS_VERSION = void 0;
 exports.truncateField = truncateField;
 exports.buildRecord = buildRecord;
 exports.progressSinkFromEnv = progressSinkFromEnv;
@@ -58,6 +58,8 @@ exports.PROGRESS_VERSION = 1;
 exports.PROGRESS_DIR_ENV = 'JSONUI_TEST_PROGRESS_DIR';
 /** test / case / file longer than this many characters are cut to it plus '…'. */
 exports.PROGRESS_MAX_CHARS = 200;
+/** `file` for a test that came from no file (built in code, or loaded from a string) — the same word in every driver. */
+exports.PROGRESS_INLINE_FILE = 'inline';
 /**
  * Cut a string to PROGRESS_MAX_CHARS characters plus '…'. Characters, not
  * UTF-16 units: Array.from walks code points, so a cut never splits a

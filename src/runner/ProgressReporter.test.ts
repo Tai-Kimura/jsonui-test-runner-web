@@ -253,6 +253,15 @@ describe('the runner emits progress records', () => {
     );
   });
 
+  it('a test that came from no file (loaded from a string, or built in code) is file "inline", as in the other drivers', async () => {
+    // README's own pattern: TestLoader.loadFromString(...) → runner.run(...), no path.
+    await makeRunner().runScreenTest(screenTest());
+    const lines = readRun(tmp);
+    const caseLines = lines.filter(l => l.event === 'case_start' || l.event === 'case_end');
+    expect(caseLines.length).toBeGreaterThan(0);
+    for (const l of caseLines) expect(l.file).toBe('inline');
+  });
+
   it('beginRun / endRun: one run over several files', async () => {
     const runner = makeRunner(0);
     runner.beginRun(2);

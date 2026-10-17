@@ -16,6 +16,8 @@ export declare const PROGRESS_VERSION = 1;
 export declare const PROGRESS_DIR_ENV = "JSONUI_TEST_PROGRESS_DIR";
 /** test / case / file longer than this many characters are cut to it plus '…'. */
 export declare const PROGRESS_MAX_CHARS = 200;
+/** `file` for a test that came from no file (built in code, or loaded from a string) — the same word in every driver. */
+export declare const PROGRESS_INLINE_FILE = "inline";
 /** The case outcome a case_end carries; 'skipped' only with attempt 0. */
 export type ProgressStatus = 'passed' | 'failed' | 'skipped';
 /** What one record says, before the common keys are added. */

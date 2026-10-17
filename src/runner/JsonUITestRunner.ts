@@ -54,7 +54,7 @@ import {
 import { waitForReceipt } from './StateBridge';
 import { screenIdFromLayout } from './screenIdentity';
 import { defaultOrientationForTier } from './RunDefaults';
-import { ProgressReporter } from './ProgressReporter';
+import { ProgressReporter, PROGRESS_INLINE_FILE } from './ProgressReporter';
 
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
@@ -373,7 +373,7 @@ export class JsonUITestRunner {
 
   /** The test file relative to testsDir (default: the working directory), '/'-separated. */
   private progressFileName(testPath: string): string {
-    if (!testPath) return '';
+    if (!testPath) return PROGRESS_INLINE_FILE;
     const root = path.resolve(this.config.testsDir ?? process.cwd());
     return path.relative(root, path.resolve(testPath)).split(path.sep).join('/');
   }
