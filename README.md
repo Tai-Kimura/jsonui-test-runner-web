@@ -381,6 +381,9 @@ created). Writing a line never changes a test's result.
 - `case_start` / `case_end` — one pair per attempt (`caseRetries`); a case
   that never runs is a single `case_end` with `attempt: 0`, `status:
   "skipped"`. A flow's body is its one case (`case: "flow"`).
+  Every row results.json gets has its case lines — a row failed by launch /
+  setup, or added for a failed teardown (`case: "teardown"`), is one failed
+  attempt — so the last `case_end` of each row adds up to `run_end`.
 - `file` is the test file relative to the `testsDir` config (default: the
   working directory); `test` / `case` are results.json's `testName` /
   `caseName`.
