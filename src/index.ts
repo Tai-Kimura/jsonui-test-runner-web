@@ -21,6 +21,14 @@ export { StateProvider, BridgeStateProvider } from './runner/StateProvider';
 export { MockClient } from './runner/MockClient';
 export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
 export {
+  ProgressReporter,
+  ProgressSink,
+  ProgressRecord,
+  ProgressEvent,
+  PROGRESS_DIR_ENV,
+  buildRecord
+} from './runner/ProgressReporter';
+export {
   loadRunDefaults,
   defaultOrientationForTier,
   RUN_DEFAULTS_FILENAME,

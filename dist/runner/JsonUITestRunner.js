@@ -3,8 +3,42 @@
  * JsonUI Test Runner - Web Driver
  * Main test runner using Playwright
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TestRunnerBuilder = exports.JsonUITestRunner = void 0;
+const path = __importStar(require("path"));
 const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const visibility_1 = require("../visibility");
@@ -18,6 +52,7 @@ const InitialState_1 = require("./InitialState");
 const StateBridge_1 = require("./StateBridge");
 const screenIdentity_1 = require("./screenIdentity");
 const RunDefaults_1 = require("./RunDefaults");
+const ProgressReporter_1 = require("./ProgressReporter");
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
 const DEFAULT_CONFIG = {
@@ -37,7 +72,8 @@ const DEFAULT_CONFIG = {
     mockToken: undefined,
     responsive: { medium: 768, regular: 1024 },
     screenReadyStrategy: 'auto',
-    screenReadyTimeout: 15000
+    screenReadyTimeout: 15000,
+    testsDir: undefined
 };
 /**
  * Injected into every document: records window.open calls so the `openedUrl`
@@ -78,6 +114,12 @@ class JsonUITestRunner {
         this.currentCaseName = '';
         /** Flow: screens whose initialState receipt is still to be checked -> launchId. */
         this.pendingReceipts = new Map();
+        /** The open run's progress records (ProgressReporter); null between runs. */
+        this.progress = null;
+        /** The open run's rows, counted as results.json counts them, for run_end. */
+        this.progressCounts = { passed: 0, failed: 0, skipped: 0 };
+        /** The file being run, as its progress records name it. */
+        this.progressFile = '';
         this.config = {
             ...DEFAULT_CONFIG,
             ...config,
@@ -131,9 +173,102 @@ class JsonUITestRunner {
         }
     }
     /**
+     * Open a run of `files` test files for the progress records: run_start
+     * now, run_end at `endRun`. Only for a harness that runs several files
+     * through this one runner — `run` outside an open run is a run of one file
+     * by itself. Opening a run while one is open ends that one first.
+     */
+    beginRun(files) {
+        if (this.progress)
+            this.endRun();
+        this.progress = new ProgressReporter_1.ProgressReporter();
+        this.progressCounts = { passed: 0, failed: 0, skipped: 0 };
+        this.progress.runStart(files, this.browserName());
+    }
+    /** Close the run `beginRun` opened: run_end with the rows it produced. */
+    endRun() {
+        if (!this.progress)
+            return;
+        const { passed, failed, skipped } = this.progressCounts;
+        this.progress.runEnd(passed, failed, skipped);
+        this.progress = null;
+    }
+    /**
+     * One file inside the open run, or inside a run of its own. Every row the
+     * file returns is counted for run_end, teardown rows included, because
+     * results.json counts them; a file that throws still ends its own run.
+     */
+    async inRun(testPath, body) {
+        const ownRun = this.progress === null;
+        if (ownRun)
+            this.beginRun(1);
+        this.progressFile = this.progressFileName(testPath);
+        try {
+            const suite = await body();
+            for (const result of suite.results) {
+                if (result.skipped)
+                    this.progressCounts.skipped++;
+                else if (result.passed)
+                    this.progressCounts.passed++;
+                else
+                    this.progressCounts.failed++;
+            }
+            return suite;
+        }
+        finally {
+            if (ownRun)
+                this.endRun();
+        }
+    }
+    /** The test file relative to testsDir (default: the working directory), '/'-separated. */
+    progressFileName(testPath) {
+        if (!testPath)
+            return '';
+        const root = path.resolve(this.config.testsDir ?? process.cwd());
+        return path.relative(root, path.resolve(testPath)).split(path.sep).join('/');
+    }
+    /** The browser's name for run_start, when the page can tell (a fake page cannot). */
+    browserName() {
+        try {
+            return this.page.context().browser()?.browserType().name();
+        }
+        catch {
+            return undefined;
+        }
+    }
+    /** case_start of one attempt; returns its start time for `caseEnded`. */
+    caseStarted(testName, caseName, attempt) {
+        this.progress?.caseStart(this.progressFile, testName, caseName, attempt);
+        return Date.now();
+    }
+    /**
+     * case_end of one attempt. Callers gate a case before its attempts, so an
+     * attempt's row is passed or failed, never skipped.
+     */
+    caseEnded(result, attempt, started) {
+        this.progress?.caseEnd(this.progressFile, result.testName, result.caseName, attempt, result.passed ? 'passed' : 'failed', Date.now() - started);
+    }
+    /**
+     * The records of a row decided without attempts: a skipped row is the one
+     * attempt-0 case_end; a row failed before its body could run (launch,
+     * setup, needs-reopen) is one attempt that failed. Returns the row.
+     */
+    progressRow(result) {
+        if (result.skipped) {
+            this.progress?.caseSkipped(this.progressFile, result.testName, result.caseName);
+        }
+        else {
+            this.caseEnded(result, 1, this.caseStarted(result.testName, result.caseName, 1));
+        }
+        return result;
+    }
+    /**
      * Run a screen test
      */
-    async runScreenTest(test, _testPath = '') {
+    async runScreenTest(test, testPath = '') {
+        return this.inRun(testPath, () => this.runScreenTestFile(test));
+    }
+    async runScreenTestFile(test) {
         const results = [];
         const startTime = Date.now();
         await this.ensureWindowOpenSpy();
@@ -143,7 +278,7 @@ class JsonUITestRunner {
             this.log('Skipping test - platform mismatch');
             return {
                 suiteName: test.metadata.name,
-                results: test.cases.map(testCase => ({
+                results: test.cases.map(testCase => this.progressRow({
                     testName: test.metadata.name,
                     caseName: testCase.name,
                     passed: true,
@@ -235,7 +370,7 @@ class JsonUITestRunner {
         // Run test cases
         for (const testCase of test.cases) {
             if (setupError !== null) {
-                results.push({
+                results.push(this.progressRow({
                     testName: test.metadata.name,
                     caseName: testCase.name,
                     passed: false,
@@ -244,24 +379,24 @@ class JsonUITestRunner {
                     // never ran and this row says nothing about the app.
                     failureReason: 'setup',
                     durationMs: 0
-                });
+                }));
                 continue;
             }
             const gated = await this.gateCase(test.metadata.name, testCase);
             if (gated) {
-                results.push(gated);
+                results.push(this.progressRow(gated));
                 continue;
             }
             if ((0, InitialState_1.caseNeedsReopen)(test, testCase)) {
                 // The file's payload went with the one launch; this case's cannot.
-                results.push(await this.withOrientation({
+                results.push(this.progressRow(await this.withOrientation({
                     testName: test.metadata.name,
                     caseName: testCase.name,
                     passed: false,
                     error: (0, InitialState_1.caseNeedsReopenMessage)(testCase.name),
                     failureReason: 'setup',
                     durationMs: 0
-                }));
+                })));
                 continue;
             }
             results.push(await this.runTestCaseWithRetries(test.metadata.name, testCase));
@@ -303,7 +438,7 @@ class JsonUITestRunner {
         for (const testCase of test.cases) {
             const gated = await this.gateCase(test.metadata.name, testCase);
             if (gated) {
-                results.push(gated);
+                results.push(this.progressRow(gated));
                 continue;
             }
             let attempts = 0;
@@ -314,7 +449,9 @@ class JsonUITestRunner {
                 if (attempts > 1) {
                     this.log(`  Case ${testCase.name} failed — retry attempt ${attempts}/${maxAttempts}`);
                 }
+                const started = this.caseStarted(test.metadata.name, testCase.name, attempts);
                 ({ result, teardownError } = await this.runReopenedAttempt(test, testCase, initialUrl));
+                this.caseEnded(result, attempts, started);
             } while (!result.passed && attempts < maxAttempts);
             result.attempts = attempts;
             results.push(result);
@@ -466,7 +603,10 @@ class JsonUITestRunner {
     /**
      * Run a flow test
      */
-    async runFlowTest(test, _testPath = '') {
+    async runFlowTest(test, testPath = '') {
+        return this.inRun(testPath, () => this.runFlowTestFile(test));
+    }
+    async runFlowTestFile(test) {
         const startTime = Date.now();
         await this.ensureWindowOpenSpy();
         // Check platform compatibility. Emit a skipped row (not results: []) so the
@@ -475,14 +615,14 @@ class JsonUITestRunner {
             this.log('Skipping flow test - platform mismatch');
             return {
                 suiteName: test.metadata.name,
-                results: [{
+                results: [this.progressRow({
                         testName: test.metadata.name,
                         caseName: 'flow',
                         passed: true,
                         skipped: true,
                         skipReason: 'platform',
                         durationMs: 0
-                    }],
+                    })],
                 totalDurationMs: 0
             };
         }
@@ -518,14 +658,14 @@ class JsonUITestRunner {
             await this.clearFileStorage();
             return {
                 suiteName: test.metadata.name,
-                results: [{
+                results: [this.progressRow({
                         testName: test.metadata.name,
                         caseName: 'flow',
                         passed: false,
                         error: `launch failed: ${message}`,
                         failureReason: 'setup',
                         durationMs: Date.now() - startTime
-                    }],
+                    })],
                 totalDurationMs: Date.now() - startTime
             };
         }
@@ -538,6 +678,9 @@ class JsonUITestRunner {
         do {
             flowAttempts++;
             flowError = null;
+            // The flow body is the flow's one case; referenced screen-test cases
+            // run inside it and have no records of their own.
+            const attemptStarted = this.caseStarted(test.metadata.name, 'flow', flowAttempts);
             const attemptWarnings = [];
             // Each attempt starts on no known screen: the first inline step is
             // verified (and its pending receipt checked) again, not skipped as
@@ -560,6 +703,7 @@ class JsonUITestRunner {
                 flowError = error instanceof Error ? error.message : String(error);
                 this.log(`Flow test failed: ${flowError}`);
             }
+            this.progress?.caseEnd(this.progressFile, test.metadata.name, 'flow', flowAttempts, flowError === null ? 'passed' : 'failed', Date.now() - attemptStarted);
             if (flowError === null || flowAttempts >= maxAttempts) {
                 warnings.push(...attemptWarnings);
                 if (flowError === null) {
@@ -626,11 +770,15 @@ class JsonUITestRunner {
     async runTestCaseWithRetries(testName, testCase) {
         const maxAttempts = Math.max(0, this.config.caseRetries ?? 0) + 1;
         let attempts = 1;
+        let started = this.caseStarted(testName, testCase.name, attempts);
         let result = await this.runTestCase(testName, testCase);
+        this.caseEnded(result, attempts, started);
         while (!result.passed && !result.skipped && attempts < maxAttempts) {
             attempts++;
             this.log(`  Case ${testCase.name} failed — retry attempt ${attempts}/${maxAttempts}`);
+            started = this.caseStarted(testName, testCase.name, attempts);
             result = await this.runTestCase(testName, testCase);
+            this.caseEnded(result, attempts, started);
         }
         if (!result.skipped) {
             result.attempts = attempts;
@@ -1290,6 +1438,11 @@ class TestRunnerBuilder {
     }
     screenshotDir(dir) {
         this.config.screenshotDir = dir;
+        return this;
+    }
+    /** See TestRunnerConfig.testsDir. */
+    testsDir(dir) {
+        this.config.testsDir = dir;
         return this;
     }
     /** See TestRunnerConfig.afterLaunch. */

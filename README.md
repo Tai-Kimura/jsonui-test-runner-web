@@ -367,6 +367,24 @@ const runner = new JsonUITestRunner(page, {
 
 (or `createRunner().afterLaunch(async (page) => { … }).build(page)`).
 
+## Progress records
+
+While a run is under way the runner appends one JSON line per event
+(`schemas/progress.schema.json` in jsonui-test-runner, read by `jui viz`) to
+`<JSONUI_TEST_PROGRESS_DIR>/<run>.jsonl`. With the variable unset, or naming a
+directory that does not exist, nothing is written (the directory is never
+created). Writing a line never changes a test's result.
+
+- `run_start` / `run_end` — `runner.run(test)` on its own is a run of one
+  file. A harness that runs several files through one runner brackets them:
+  `runner.beginRun(files.length)` … `runner.endRun()`.
+- `case_start` / `case_end` — one pair per attempt (`caseRetries`); a case
+  that never runs is a single `case_end` with `attempt: 0`, `status:
+  "skipped"`. A flow's body is its one case (`case: "flow"`).
+- `file` is the test file relative to the `testsDir` config (default: the
+  working directory); `test` / `case` are results.json's `testName` /
+  `caseName`.
+
 ## API mocks
 
 Run against the JsonUI mock server (`jsonui-test mock serve`) to test empty/error

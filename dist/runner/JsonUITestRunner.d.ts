@@ -105,6 +105,12 @@ export interface TestRunnerConfig {
      * run.
      */
     screenReadyTimeout?: number;
+    /**
+     * The tests root the progress records' `file` is relative to (the
+     * directory handed to TestLoader.loadFromDirectory, typically). Default:
+     * the working directory.
+     */
+    testsDir?: string;
 }
 /**
  * Main test runner for JsonUI tests
@@ -147,6 +153,12 @@ export declare class JsonUITestRunner {
     private stateProvider;
     /** Flow: screens whose initialState receipt is still to be checked -> launchId. */
     private pendingReceipts;
+    /** The open run's progress records (ProgressReporter); null between runs. */
+    private progress;
+    /** The open run's rows, counted as results.json counts them, for run_end. */
+    private progressCounts;
+    /** The file being run, as its progress records name it. */
+    private progressFile;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
      * Make sure the CURRENT document has the window.open spy too — the runner
@@ -161,9 +173,42 @@ export declare class JsonUITestRunner {
      */
     run(test: LoadedTest): Promise<TestSuiteResult>;
     /**
+     * Open a run of `files` test files for the progress records: run_start
+     * now, run_end at `endRun`. Only for a harness that runs several files
+     * through this one runner — `run` outside an open run is a run of one file
+     * by itself. Opening a run while one is open ends that one first.
+     */
+    beginRun(files: number): void;
+    /** Close the run `beginRun` opened: run_end with the rows it produced. */
+    endRun(): void;
+    /**
+     * One file inside the open run, or inside a run of its own. Every row the
+     * file returns is counted for run_end, teardown rows included, because
+     * results.json counts them; a file that throws still ends its own run.
+     */
+    private inRun;
+    /** The test file relative to testsDir (default: the working directory), '/'-separated. */
+    private progressFileName;
+    /** The browser's name for run_start, when the page can tell (a fake page cannot). */
+    private browserName;
+    /** case_start of one attempt; returns its start time for `caseEnded`. */
+    private caseStarted;
+    /**
+     * case_end of one attempt. Callers gate a case before its attempts, so an
+     * attempt's row is passed or failed, never skipped.
+     */
+    private caseEnded;
+    /**
+     * The records of a row decided without attempts: a skipped row is the one
+     * attempt-0 case_end; a row failed before its body could run (launch,
+     * setup, needs-reopen) is one attempt that failed. Returns the row.
+     */
+    private progressRow;
+    /**
      * Run a screen test
      */
-    runScreenTest(test: ScreenTest, _testPath?: string): Promise<TestSuiteResult>;
+    runScreenTest(test: ScreenTest, testPath?: string): Promise<TestSuiteResult>;
+    private runScreenTestFile;
     /**
      * `caseIsolation: 'shared'` (the default): the file opens the screen once,
      * runs setup once, runs every case in that one page state, then teardown
@@ -218,7 +263,8 @@ export declare class JsonUITestRunner {
     /**
      * Run a flow test
      */
-    runFlowTest(test: FlowTest, _testPath?: string): Promise<TestSuiteResult>;
+    runFlowTest(test: FlowTest, testPath?: string): Promise<TestSuiteResult>;
+    private runFlowTestFile;
     /**
      * Run a case, re-running it up to `caseRetries` extra times while it
      * fails. The returned result is the final attempt's, stamped with the
@@ -353,6 +399,8 @@ export declare class TestRunnerBuilder {
     defaultTimeout(timeout: number): this;
     screenshotOnFailure(enabled: boolean): this;
     screenshotDir(dir: string): this;
+    /** See TestRunnerConfig.testsDir. */
+    testsDir(dir: string): this;
     /** See TestRunnerConfig.afterLaunch. */
     afterLaunch(hook: (page: Page) => void | Promise<void>): this;
     stateProvider(provider: StateProvider): this;
