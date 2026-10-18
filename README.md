@@ -396,7 +396,7 @@ runs. No variable or option is needed (unlike progress records, which stay
 "no variable, no trace"; the asymmetry is deliberate):
 
 ```
-<base>/web/<app>/<yyyyMMddTHHmmss.SSSZ>-<run>.json
+<base>/web/<app>/<yyyyMMddTHHmmss.SSSZ>-<run>-<fileKey8>.json
 ```
 
 - `<base>` is `$JSONUI_TEST_RESULTS_DIR` when it is an absolute path, else
@@ -412,11 +412,18 @@ runs. No variable or option is needed (unlike progress records, which stay
   `beginRun` and `endRun` (one suite per test file). `<run>` is the same run
   id the progress records carry; besides the usual keys the file has `run`,
   `app` (unsanitized) and, on each suite, `file` (the progress records'
-  `file`). Those three keys appear only in these files.
+  `file`). Those three keys appear only in these files. `<fileKey8>` is the
+  first 8 hex digits of SHA-256 over the run's test files (the distinct
+  `file` values, sorted, joined with a newline), so pruning can tell the
+  results of one test file from another by name alone.
 - The file is written as `.<name>.tmp` and renamed, so a reader never sees half
-  a file. After each write the app folder is pruned: files older than 14 days
-  go, then only the newest 500 stay. Only names of the form above are ever
-  deleted; nothing else in the folder, and no other app's folder, is touched.
+  a file. After each write the app folder is pruned. The latest result of every
+  test file always stays, however old and however many other files ran since;
+  14 days and 500 files apply only to results a newer one of the same test
+  file replaced (and to names of the earlier shape, `<time>-<run>.json`). Only
+  names of these forms are ever deleted; nothing else in the folder, and no
+  other app's folder, is touched. The rule and its cases are jsonui-test-runner
+  `specs/vectors/results-prune.json`, shared by the three drivers and `jui viz`.
 - A failed write (e.g. an unwritable folder) prints one warning per process
   and never changes a test's result.
 

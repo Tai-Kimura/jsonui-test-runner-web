@@ -4,7 +4,12 @@
  * in the results.schema.json shape, to a per-app folder on the host, one new
  * file per run, so `jui viz` can read past runs.
  *
- *   <base>/web/<app-segment>/<yyyyMMddTHHmmss.SSSZ>-<run>.json
+ *   <base>/web/<app-segment>/<yyyyMMddTHHmmss.SSSZ>-<run>-<fileKey8>.json
+ *
+ * fileKey8 names the run's test file (resultsFileKey), so pruning keeps the
+ * latest result of every test file without reading any file: the rule the
+ * three drivers and jui viz share, with its cases in
+ * jsonui-test-runner specs/vectors/results-prune.json.
  *
  * base = $JSONUI_TEST_RESULTS_DIR when it is an absolute path, else
  * `<home>/.local/state/jsonui-test/results`. XDG_STATE_HOME is deliberately
@@ -28,11 +33,15 @@ import { ResultsJson, ResultsJsonSuite } from './ResultsWriter';
 export declare const RESULTS_DIR_ENV = "JSONUI_TEST_RESULTS_DIR";
 /** The platform folder (and the `platform` the file carries). */
 export declare const RESULTS_PLATFORM = "web";
-/** The only names pruning may ever delete; the dot-prefixed tmp file never matches. */
+/**
+ * The only names pruning may ever delete; the dot-prefixed tmp file never
+ * matches. Group 1 is the fileKey8; a name of the earlier shape (1.17.0, no
+ * fileKey8) still matches, without it.
+ */
 export declare const RESULTS_NAME_PATTERN: RegExp;
-/** Files whose name timestamp is older than this many days are pruned. */
+/** A result replaced by a newer one of the same test file goes after this many days. */
 export declare const RESULTS_MAX_AGE_DAYS = 14;
-/** At most this many files (the newest by name) are kept per app folder. */
+/** Replaced results go, oldest first, until at most this many files remain per app folder. */
 export declare const RESULTS_MAX_FILES = 500;
 /** A default-location file: the results JSON plus run / app / suites[].file. */
 export interface DefaultResultsJson extends Omit<ResultsJson, 'suites'> {
@@ -79,15 +88,29 @@ export declare function resultsBaseDir(env: NodeJS.ProcessEnv, home: string): st
  * string, else the working directory's base name.
  */
 export declare function webAppId(cwd: string, readFile: (file: string) => string): string;
-/** `<UTC yyyyMMdd'T'HHmmss.SSS'Z'>-<run>.json`. */
-export declare function resultsFileName(time: Date, run: string): string;
+/**
+ * The run's file key in a name: the first 8 hex digits of SHA-256 over the
+ * UTF-8 of its test files — the distinct values sorted, joined with a newline
+ * (a run is one file almost always; Web can carry several suites).
+ */
+export declare function resultsFileKey(files: string[]): string;
+/** `<UTC yyyyMMdd'T'HHmmss.SSS'Z'>-<run>-<fileKey8>.json`. */
+export declare function resultsFileName(time: Date, run: string, fileKey8: string): string;
 /** The UTC time a matching name carries, in ms. */
 export declare function resultsFileTime(name: string): number;
 /**
- * Prune ONE app folder: among names matching RESULTS_NAME_PATTERN, delete
- * those older than RESULTS_MAX_AGE_DAYS, then keep the newest
- * RESULTS_MAX_FILES by name (name order is time order). Nothing else is
- * touched; no recursion. Each delete swallows its own failure.
+ * The names pruning deletes from one app folder, in name order (name order is
+ * time order). The newest name of each fileKey8 is always kept: a test file
+ * not rerun keeps its latest result however old, and however many other
+ * files ran since. The rest — older names of the same fileKey8, and names of
+ * the earlier shape — go when older than maxAgeDays, then oldest first until
+ * at most maxFiles names remain (a folder of more test files than maxFiles
+ * keeps them all). Names not matching RESULTS_NAME_PATTERN are never chosen.
+ */
+export declare function resultsToPrune(names: string[], nowMs: number, maxFiles?: number, maxAgeDays?: number): string[];
+/**
+ * Prune ONE app folder by resultsToPrune. Nothing else is touched; no
+ * recursion. Each delete swallows its own failure.
  */
 export declare function pruneResultsDir(dir: string, now: Date, fsPort: DefaultResultsFs): void;
 /** Writes one progress run's results to the default location. */
