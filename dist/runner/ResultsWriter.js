@@ -42,7 +42,12 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class ResultsWriter {
     /**
-     * Write suite results to a results JSON file (default './jsonui-results.json')
+     * Write suite results to a results JSON file (default './jsonui-results.json').
+     *
+     * Independent of the default results location: the runner itself writes
+     * every run there (DefaultResults.ts), so a consumer that also calls this
+     * writes the results to two places — allowed. This file stays exactly as
+     * before: no `run` / `app` / `file` keys.
      */
     static write(suites, outputPath = './jsonui-results.json', platform = 'web') {
         const payload = this.toResultsJson(suites, platform);
@@ -53,13 +58,15 @@ class ResultsWriter {
     /**
      * Convert in-memory suite results to the standardized results JSON shape.
      * status is derived: skipped -> 'skipped', else passed/failed.
+     * `generatedAt` defaults to now; the default-location writer passes the
+     * time its file name carries.
      */
-    static toResultsJson(suites, platform = 'web') {
+    static toResultsJson(suites, platform = 'web', generatedAt = new Date()) {
         return {
             format: 'jsonui-test-results',
             version: 1,
             platform,
-            generatedAt: new Date().toISOString(),
+            generatedAt: generatedAt.toISOString(),
             suites: suites.map(suite => ({
                 suiteName: suite.suiteName,
                 totalDurationMs: suite.totalDurationMs,

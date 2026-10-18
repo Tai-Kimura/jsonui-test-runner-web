@@ -29,6 +29,13 @@ export {
   buildRecord
 } from './runner/ProgressReporter';
 export {
+  RESULTS_DIR_ENV,
+  RESULTS_NAME_PATTERN,
+  resultsBaseDir,
+  sanitizeAppSegment,
+  DefaultResultsJson
+} from './runner/DefaultResults';
+export {
   loadRunDefaults,
   defaultOrientationForTier,
   RUN_DEFAULTS_FILENAME,

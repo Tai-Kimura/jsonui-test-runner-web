@@ -43,13 +43,20 @@ export interface ResultsJsonResult {
 }
 export declare class ResultsWriter {
     /**
-     * Write suite results to a results JSON file (default './jsonui-results.json')
+     * Write suite results to a results JSON file (default './jsonui-results.json').
+     *
+     * Independent of the default results location: the runner itself writes
+     * every run there (DefaultResults.ts), so a consumer that also calls this
+     * writes the results to two places — allowed. This file stays exactly as
+     * before: no `run` / `app` / `file` keys.
      */
     static write(suites: TestSuiteResult[], outputPath?: string, platform?: string): void;
     /**
      * Convert in-memory suite results to the standardized results JSON shape.
      * status is derived: skipped -> 'skipped', else passed/failed.
+     * `generatedAt` defaults to now; the default-location writer passes the
+     * time its file name carries.
      */
-    static toResultsJson(suites: TestSuiteResult[], platform?: string): ResultsJson;
+    static toResultsJson(suites: TestSuiteResult[], platform?: string, generatedAt?: Date): ResultsJson;
 }
 //# sourceMappingURL=ResultsWriter.d.ts.map

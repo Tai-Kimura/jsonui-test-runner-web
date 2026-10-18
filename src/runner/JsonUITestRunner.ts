@@ -55,6 +55,7 @@ import { waitForReceipt } from './StateBridge';
 import { screenIdFromLayout } from './screenIdentity';
 import { defaultOrientationForTier } from './RunDefaults';
 import { ProgressReporter, PROGRESS_INLINE_FILE } from './ProgressReporter';
+import { DefaultResultsSuite, DefaultResultsWriter } from './DefaultResults';
 
 /** Safety cap for `repeat` with a `while` condition and no `times` */
 const REPEAT_WHILE_CAP = 100;
@@ -267,6 +268,14 @@ export class JsonUITestRunner {
   private progressCounts = { passed: 0, failed: 0, skipped: 0 };
   /** The file being run, as its progress records name it. */
   private progressFile = '';
+  /** The open run's suites with their progress `file`, for the default results file. */
+  private runSuites: DefaultResultsSuite[] = [];
+  /**
+   * Writes each progress run's results to the default location
+   * (DefaultResults.ts) — always, whether or not the consumer also calls
+   * ResultsWriter.write. Replaced in tests.
+   */
+  private defaultResults = new DefaultResultsWriter();
 
   constructor(page: Page, config: TestRunnerConfig = {}) {
     this.config = {
@@ -338,15 +347,25 @@ export class JsonUITestRunner {
     if (this.progress) this.endRun();
     this.progress = new ProgressReporter();
     this.progressCounts = { passed: 0, failed: 0, skipped: 0 };
+    this.runSuites = [];
     this.progress.runStart(files, this.browserName());
   }
 
-  /** Close the run `beginRun` opened: run_end with the rows it produced. */
+  /**
+   * Close the run `beginRun` opened: run_end with the rows it produced, then
+   * the run's one default-location results file (same run id, one suite per
+   * file that returned, each with its progress `file`). A run in which no
+   * file returned writes none. The write cannot throw.
+   */
   endRun(): void {
     if (!this.progress) return;
     const { passed, failed, skipped } = this.progressCounts;
     this.progress.runEnd(passed, failed, skipped);
+    const runId = this.progress.runId;
+    const suites = this.runSuites;
     this.progress = null;
+    this.runSuites = [];
+    if (suites.length > 0) this.defaultResults.write(suites, runId);
   }
 
   /**
@@ -357,9 +376,11 @@ export class JsonUITestRunner {
   private async inRun(testPath: string, body: () => Promise<TestSuiteResult>): Promise<TestSuiteResult> {
     const ownRun = this.progress === null;
     if (ownRun) this.beginRun(1);
-    this.progressFile = this.progressFileName(testPath);
+    const file = this.progressFileName(testPath);
+    this.progressFile = file;
     try {
       const suite = await body();
+      this.runSuites.push({ suite, file });
       for (const result of suite.results) {
         if (result.skipped) this.progressCounts.skipped++;
         else if (result.passed) this.progressCounts.passed++;

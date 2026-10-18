@@ -388,6 +388,43 @@ created). Writing a line never changes a test's result.
   working directory); `test` / `case` are results.json's `testName` /
   `caseName`.
 
+## Results files
+
+Every run also writes its results — the `schemas/results.schema.json` shape —
+to a default per-app folder, one new file per run, so `jui viz` can read past
+runs. No variable or option is needed (unlike progress records, which stay
+"no variable, no trace"; the asymmetry is deliberate):
+
+```
+<base>/web/<app>/<yyyyMMddTHHmmss.SSSZ>-<run>.json
+```
+
+- `<base>` is `$JSONUI_TEST_RESULTS_DIR` when it is an absolute path, else
+  `~/.local/state/jsonui-test/results` (`XDG_STATE_HOME` is not used). The
+  variable is host-side only: it moves this driver, the iOS driver (passed to
+  xcodebuild as `TEST_RUNNER_JSONUI_TEST_RESULTS_DIR`) and `jui viz`; it has no
+  effect on the Android driver, which writes on the device.
+- `<app>` is `name` from `package.json` in the working directory when it is a
+  non-empty string, else the working directory's folder name; every character
+  outside `[A-Za-z0-9._-]` becomes `_`, and an empty or all-dot name becomes
+  `unknown`.
+- One run is one file: `runner.run(test)` on its own, or everything between
+  `beginRun` and `endRun` (one suite per test file). `<run>` is the same run
+  id the progress records carry; besides the usual keys the file has `run`,
+  `app` (unsanitized) and, on each suite, `file` (the progress records'
+  `file`). Those three keys appear only in these files.
+- The file is written as `.<name>.tmp` and renamed, so a reader never sees half
+  a file. After each write the app folder is pruned: files older than 14 days
+  go, then only the newest 500 stay. Only names of the form above are ever
+  deleted; nothing else in the folder, and no other app's folder, is touched.
+- A failed write (e.g. an unwritable folder) prints one warning per process
+  and never changes a test's result.
+
+The web driver has no `resultsPath` option, so this write always happens.
+`ResultsWriter.write(suites, path)` is unchanged (same file, no `run` / `app`
+/ `file` keys); a harness that also calls it writes the results to two places,
+which is fine.
+
 ## API mocks
 
 Run against the JsonUI mock server (`jsonui-test mock serve`) to test empty/error

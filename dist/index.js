@@ -20,7 +20,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.lookupInBridge = exports.resolveStatePath = exports.waitForReceipt = exports.readBridge = exports.planLaunches = exports.INITIAL_STATE_KEY = exports.ARGS_KEY = exports.clearTestStorage = exports.applyLaunchToPage = exports.SUPPORTED_SCHEMA_VERSION = exports.RUN_DEFAULTS_FILENAME = exports.defaultOrientationForTier = exports.loadRunDefaults = exports.buildRecord = exports.PROGRESS_DIR_ENV = exports.ProgressReporter = exports.ResultsWriter = exports.MockClient = exports.BridgeStateProvider = exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
+exports.lookupInBridge = exports.resolveStatePath = exports.waitForReceipt = exports.readBridge = exports.planLaunches = exports.INITIAL_STATE_KEY = exports.ARGS_KEY = exports.clearTestStorage = exports.applyLaunchToPage = exports.SUPPORTED_SCHEMA_VERSION = exports.RUN_DEFAULTS_FILENAME = exports.defaultOrientationForTier = exports.loadRunDefaults = exports.sanitizeAppSegment = exports.resultsBaseDir = exports.RESULTS_NAME_PATTERN = exports.RESULTS_DIR_ENV = exports.buildRecord = exports.PROGRESS_DIR_ENV = exports.ProgressReporter = exports.ResultsWriter = exports.MockClient = exports.BridgeStateProvider = exports.TestRunnerBuilder = exports.JsonUITestRunner = exports.TestLoader = exports.AssertionExecutor = exports.ActionExecutor = void 0;
 exports.createRunner = createRunner;
 // Models
 __exportStar(require("./models/types"), exports);
@@ -46,6 +46,11 @@ var ProgressReporter_1 = require("./runner/ProgressReporter");
 Object.defineProperty(exports, "ProgressReporter", { enumerable: true, get: function () { return ProgressReporter_1.ProgressReporter; } });
 Object.defineProperty(exports, "PROGRESS_DIR_ENV", { enumerable: true, get: function () { return ProgressReporter_1.PROGRESS_DIR_ENV; } });
 Object.defineProperty(exports, "buildRecord", { enumerable: true, get: function () { return ProgressReporter_1.buildRecord; } });
+var DefaultResults_1 = require("./runner/DefaultResults");
+Object.defineProperty(exports, "RESULTS_DIR_ENV", { enumerable: true, get: function () { return DefaultResults_1.RESULTS_DIR_ENV; } });
+Object.defineProperty(exports, "RESULTS_NAME_PATTERN", { enumerable: true, get: function () { return DefaultResults_1.RESULTS_NAME_PATTERN; } });
+Object.defineProperty(exports, "resultsBaseDir", { enumerable: true, get: function () { return DefaultResults_1.resultsBaseDir; } });
+Object.defineProperty(exports, "sanitizeAppSegment", { enumerable: true, get: function () { return DefaultResults_1.sanitizeAppSegment; } });
 var RunDefaults_1 = require("./runner/RunDefaults");
 Object.defineProperty(exports, "loadRunDefaults", { enumerable: true, get: function () { return RunDefaults_1.loadRunDefaults; } });
 Object.defineProperty(exports, "defaultOrientationForTier", { enumerable: true, get: function () { return RunDefaults_1.defaultOrientationForTier; } });

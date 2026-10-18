@@ -13,6 +13,7 @@ export { StateProvider, BridgeStateProvider } from './runner/StateProvider';
 export { MockClient } from './runner/MockClient';
 export { ResultsWriter, ResultsJson, ResultsJsonSuite, ResultsJsonResult } from './runner/ResultsWriter';
 export { ProgressReporter, ProgressSink, ProgressRecord, ProgressEvent, PROGRESS_DIR_ENV, buildRecord } from './runner/ProgressReporter';
+export { RESULTS_DIR_ENV, RESULTS_NAME_PATTERN, resultsBaseDir, sanitizeAppSegment, DefaultResultsJson } from './runner/DefaultResults';
 export { loadRunDefaults, defaultOrientationForTier, RUN_DEFAULTS_FILENAME, SUPPORTED_SCHEMA_VERSION, RunDefaultsLoad, RunDefaultsMiss } from './runner/RunDefaults';
 export { applyLaunchToPage, clearTestStorage, ARGS_KEY } from './runner/LaunchConfig';
 export { INITIAL_STATE_KEY, InitialStatePayload, InitialStateScreens, planLaunches, LaunchPlan, PlannedLaunch } from './runner/InitialState';

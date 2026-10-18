@@ -8,6 +8,11 @@
  * or no such directory, and nothing is written — the directory is never
  * created here, so a run that was not asked to report leaves no trace.
  *
+ * Results are the deliberate exception: each run's results ARE written by
+ * default, with no variable set, to the default results folder
+ * (DefaultResults.ts; requester's choice 2026-10-18). Progress keeps its
+ * "no variable, no trace" rule — the asymmetry is intended, not an oversight.
+ *
  * Emitting never affects a test: every emit swallows its own failure.
  */
 /** Record format version (`v`). A key is only ever added with a new one. */

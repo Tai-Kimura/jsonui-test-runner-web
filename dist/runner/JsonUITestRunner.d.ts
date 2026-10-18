@@ -159,6 +159,14 @@ export declare class JsonUITestRunner {
     private progressCounts;
     /** The file being run, as its progress records name it. */
     private progressFile;
+    /** The open run's suites with their progress `file`, for the default results file. */
+    private runSuites;
+    /**
+     * Writes each progress run's results to the default location
+     * (DefaultResults.ts) — always, whether or not the consumer also calls
+     * ResultsWriter.write. Replaced in tests.
+     */
+    private defaultResults;
     constructor(page: Page, config?: TestRunnerConfig);
     /**
      * Make sure the CURRENT document has the window.open spy too — the runner
@@ -179,7 +187,12 @@ export declare class JsonUITestRunner {
      * by itself. Opening a run while one is open ends that one first.
      */
     beginRun(files: number): void;
-    /** Close the run `beginRun` opened: run_end with the rows it produced. */
+    /**
+     * Close the run `beginRun` opened: run_end with the rows it produced, then
+     * the run's one default-location results file (same run id, one suite per
+     * file that returned, each with its progress `file`). A run in which no
+     * file returned writes none. The write cannot throw.
+     */
     endRun(): void;
     /**
      * One file inside the open run, or inside a run of its own. Every row the
