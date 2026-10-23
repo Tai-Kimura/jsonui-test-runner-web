@@ -396,7 +396,8 @@ describe('caseRetries — attempts/flaky accounting', () => {
   });
 
   it('retries the flow body and stamps attempts on the flow row', async () => {
-    const runner = makeRunner({ width: 1280, height: 800 }, { caseRetries: 1 });
+    // the page shows the flow's first screen: the flow waits for its marker first
+    const runner = makeRunner({ width: 1280, height: 800 }, { caseRetries: 1 }, { markers: ['home'] });
     let bodyRuns = 0;
     jest.spyOn(runner as unknown as { executeFlowSteps: () => void }, 'executeFlowSteps').mockImplementation(
       (async () => {

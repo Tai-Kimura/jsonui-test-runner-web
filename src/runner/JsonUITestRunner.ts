@@ -867,6 +867,13 @@ export class JsonUITestRunner {
       if (launchId && screens) {
         for (const screenId of Object.keys(screens)) this.pendingReceipts.set(screenId, launchId);
       }
+      // The first screen's ready gate and the 500 ms, as a screen test has
+      // them before its setup: without them the flow's first step ran on a
+      // page still drawing — text typed into a field before the screen drew
+      // was wiped by the drawing (2026-10-23, drivers/web 1.17.1).
+      this.log('Waiting for the first screen to be ready...');
+      await this.waitForFlowFirstScreen(test);
+      await this.page.waitForTimeout(500);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.clearFileStorage();
@@ -1668,6 +1675,34 @@ export class JsonUITestRunner {
     } else {
       this.log(`Waiting for the '${screenId}' screen marker...`);
     }
+    await this.awaitMarker(screenId);
+  }
+
+  /**
+   * A flow's first screen: the screen of its first step (setup first), an
+   * inline step's own or the referenced file's (from its source.layout). Its
+   * marker is awaited for screenReadyTimeout; a first step that names none (a
+   * block, a step with no screen) waits for 'networkidle', as does
+   * screenReadyStrategy 'networkidle'. The one wait, before setup: a retried
+   * body does not reload, so it starts on the screen already drawn.
+   */
+  private async waitForFlowFirstScreen(test: FlowTest): Promise<void> {
+    const first = [...(test.setup ?? []), ...test.steps][0];
+    let screenId: string | undefined;
+    if (first && isFileReference(first)) {
+      screenId = screenIdFromLayout(TestLoader.resolveFileReference(first.file as string).source?.layout) ?? undefined;
+    } else if (first && !isBlockStep(first)) {
+      screenId = first.screen;
+    }
+    if (this.config.screenReadyStrategy === 'networkidle' || !screenId) {
+      this.notice(
+        `flow ready: 'networkidle' gate (${screenId ? 'forced by screenReadyStrategy' : 'the first step names no screen'}). ` +
+        'A single hung request holds this open until the flow times out.'
+      );
+      await this.page.waitForLoadState('networkidle', { timeout: this.config.screenReadyTimeout });
+      return;
+    }
+    this.log(`Waiting for the '${screenId}' screen marker...`);
     await this.awaitMarker(screenId);
   }
 

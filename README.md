@@ -207,6 +207,11 @@ If no screen id can be derived (a hand-written page with no layout), the
 runner falls back to `waitForLoadState('networkidle')` **and says so on
 stderr**. `screenReadyStrategy` forces one gate either way.
 
+A flow waits the same way once, after its launch and before its setup: for the
+marker of its first step's screen — an inline step's `screen`, or a referenced
+file's `source.layout` — or `networkidle` when that step names no screen
+(a block). Then 500ms, as a screen test has, before the first step runs.
+
 `networkidle` means "500ms with no network activity", which is a condition on
 every resource the page references rather than on the screen. One request
 that never completes holds it open until the test times out — the screen
