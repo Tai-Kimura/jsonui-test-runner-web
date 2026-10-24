@@ -152,6 +152,30 @@ Elements are identified using the `id` attribute (HTML id):
 }
 ```
 
+### `within`: the id inside one element
+
+When a Collection's cells each hold an element with the same id, an id alone
+matches the first one in the page. Any step that targets an element by id
+(every action and assertion that takes `id` / `ids` / `cropId`, the
+`<id>_item_<index>` of `tapItem` and `<id>_tab_<index>` of `selectTab`, and a
+`when` / `while` condition's `visible` / `notVisible` / `hidden`) also takes
+`within`: an element id — normally a cell `<collectionId>_item_<n>` — whose
+descendants the id is looked up among.
+
+```json
+{ "assert": "text", "id": "field_label", "within": "fields_item_2", "equals": "年数" }
+{ "action": "tap", "id": "delete_button", "within": "fields_item_2" }
+{ "action": "tap", "id": "save", "when": { "visible": "error_icon", "within": "fields_item_2" } }
+```
+
+A cell is in the DOM only while it is drawn: `scrollUntilVisible` to it first.
+When the container is not there, `visible` fails (naming the container),
+`notVisible` and `hidden` hold, and `count` fails. `scrollUntilVisible`'s own
+`container` keeps its meaning (the element to scroll).
+
+`hidden` holds when no element with the id (inside `within`, when given) is
+drawn: every match is looked at, so one drawn copy fails it.
+
 ## Available Actions
 
 | Action | Description | Parameters |

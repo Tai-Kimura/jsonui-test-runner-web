@@ -297,6 +297,7 @@ export class TestLoader {
       name: this.substituteArgsInString(step.name, args),
       path: this.substituteArgsInString(step.path, args),
       container: this.substituteArgsInString(step.container, args),
+      within: this.substituteArgsInString(step.within, args),
       cropId: this.substituteArgsInString(step.cropId, args),
       equals: this.substituteArgsInValue(step.equals, args),
       // Nested control-step (repeat/retry) steps are substituted recursively at

@@ -8,6 +8,7 @@ import { Page } from 'playwright';
 import { ActionExecutor } from '../actions/ActionExecutor';
 import { AssertionExecutor } from '../assertions/AssertionExecutor';
 import { isHidden, isInViewport } from '../visibility';
+import { byId } from '../resolve';
 import {
   LoadedTest,
   ScreenTest,
@@ -1262,17 +1263,17 @@ export class JsonUITestRunner {
       }
     }
     if (condition.visible !== undefined) {
-      if (!(await this.isInstantlyVisible(condition.visible))) {
+      if (!(await this.isInstantlyVisible(condition.visible, condition.within))) {
         return false;
       }
     }
     if (condition.notVisible !== undefined) {
-      if (await this.isInstantlyVisible(condition.notVisible)) {
+      if (await this.isInstantlyVisible(condition.notVisible, condition.within)) {
         return false;
       }
     }
     if (condition.hidden !== undefined) {
-      if (!(await isHidden(this.page.locator(`#${condition.hidden}`)))) {
+      if (!(await isHidden(byId(this.page, condition.hidden, condition.within)))) {
         return false;
       }
     }
@@ -1379,9 +1380,11 @@ export class JsonUITestRunner {
   }
 
   /** Instant visibility check (no polling) used by `when` conditions — the
-   * same predicate as the `visible` assert (src/visibility.ts). */
-  private async isInstantlyVisible(id: string): Promise<boolean> {
-    return isInViewport(this.page.locator(`#${id}`));
+   * same predicate as the `visible` assert (src/visibility.ts). With
+   * `within`, among that element's descendants (src/resolve.ts): a container
+   * that is not there is not visible. */
+  private async isInstantlyVisible(id: string, within?: string): Promise<boolean> {
+    return isInViewport(byId(this.page, id, within));
   }
 
   private async executeFlowSteps(steps: FlowTestStep[], warnings: string[]): Promise<void> {
@@ -1537,6 +1540,7 @@ export class JsonUITestRunner {
       when: step.when,
       retryTapIfNoChange: step.retryTapIfNoChange,
       container: step.container,
+      within: step.within,
       variable: step.variable,
       times: step.times,
       while: step.while,
