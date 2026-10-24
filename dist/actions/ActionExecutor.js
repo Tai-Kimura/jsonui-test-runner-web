@@ -46,6 +46,7 @@ const path = __importStar(require("path"));
 const types_1 = require("../models/types");
 const TestLoader_1 = require("../runner/TestLoader");
 const visibility_1 = require("../visibility");
+const resolve_1 = require("../resolve");
 /**
  * Why Playwright could not act, from its timeout message: the last line of the
  * call log that states a condition ("element is not enabled", "<div> intercepts
@@ -168,13 +169,13 @@ class ActionExecutor {
         if (!id) {
             throw new Error("tap requires 'id'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // If text is specified, tap on the specific text portion within the element
         if (step.text) {
             await this.tapTextPortion(element, step.text, timeout);
         }
         else {
-            await this.actionable('tap', id, timeout, (t) => element.click({ timeout: t }));
+            await this.actionable('tap', id, timeout, step.within, (t) => element.click({ timeout: t }));
         }
     }
     async executeDoubleTap(step, timeout) {
@@ -182,8 +183,8 @@ class ActionExecutor {
         if (!id) {
             throw new Error("doubleTap requires 'id'");
         }
-        const element = await this.waitForElement(id, timeout);
-        await this.actionable('doubleTap', id, timeout, (t) => element.dblclick({ timeout: t }));
+        const element = await this.waitForElement(id, timeout, step.within);
+        await this.actionable('doubleTap', id, timeout, step.within, (t) => element.dblclick({ timeout: t }));
     }
     async executeLongPress(step, timeout) {
         const id = step.id;
@@ -191,9 +192,9 @@ class ActionExecutor {
             throw new Error("longPress requires 'id'");
         }
         const duration = step.duration ?? 500;
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Playwright doesn't have built-in long press, simulate with mouse down/up
-        await this.actionable('longPress', id, timeout, (t) => element.hover({ timeout: t }));
+        await this.actionable('longPress', id, timeout, step.within, (t) => element.hover({ timeout: t }));
         await this.page.mouse.down();
         await this.page.waitForTimeout(duration);
         await this.page.mouse.up();
@@ -207,16 +208,16 @@ class ActionExecutor {
         if (value === undefined) {
             throw new Error("input requires 'value'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Try to find an input element within the container
         const input = element.locator('input, textarea').first();
         const hasInput = await input.count() > 0;
         if (hasInput) {
-            await this.actionable('input', id, timeout, (t) => input.fill(value, { timeout: t }));
+            await this.actionable('input', id, timeout, step.within, (t) => input.fill(value, { timeout: t }));
         }
         else {
             // Try filling directly if the element itself is an input
-            await this.actionable('input', id, timeout, (t) => element.fill(value, { timeout: t }));
+            await this.actionable('input', id, timeout, step.within, (t) => element.fill(value, { timeout: t }));
         }
     }
     /**
@@ -237,16 +238,16 @@ class ActionExecutor {
         if (!id) {
             throw new Error("clear requires 'id'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Try to find an input element within the container
         const input = element.locator('input, textarea').first();
         const hasInput = await input.count() > 0;
         if (hasInput) {
-            await this.actionable('clear', id, timeout, (t) => input.clear({ timeout: t }));
+            await this.actionable('clear', id, timeout, step.within, (t) => input.clear({ timeout: t }));
         }
         else {
             // Try clearing directly if the element itself is an input
-            await this.actionable('clear', id, timeout, (t) => element.clear({ timeout: t }));
+            await this.actionable('clear', id, timeout, step.within, (t) => element.clear({ timeout: t }));
         }
     }
     async executeScroll(step, timeout) {
@@ -258,7 +259,7 @@ class ActionExecutor {
         if (!direction) {
             throw new Error("scroll requires 'direction'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Bounded: an element that leaves the DOM after waitForElement must fail
         // this step inside its timeout, not hold it (boundingBox waits otherwise).
         const box = await element.boundingBox({ timeout });
@@ -293,7 +294,7 @@ class ActionExecutor {
         if (!direction) {
             throw new Error("swipe requires 'direction'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Bounded: an element that leaves the DOM after waitForElement must fail
         // this step inside its timeout, not hold it (boundingBox waits otherwise).
         const box = await element.boundingBox({ timeout });
@@ -336,7 +337,7 @@ class ActionExecutor {
         if (!id) {
             throw new Error("waitFor requires 'id'");
         }
-        await this.waitForElement(id, timeout);
+        await this.waitForElement(id, timeout, step.within);
     }
     async executeWaitForAny(step, timeout) {
         const ids = step.ids;
@@ -346,13 +347,19 @@ class ActionExecutor {
         const startTime = Date.now();
         while (Date.now() - startTime < timeout) {
             for (const id of ids) {
-                const element = this.getLocator(id);
+                const element = this.getLocator(id, step.within);
                 const count = await element.count();
                 if (count > 0 && await element.first().isVisible()) {
                     return;
                 }
             }
             await this.page.waitForTimeout(100);
+        }
+        if (step.within) {
+            if (!(await (0, resolve_1.containerPresent)(this.page, step.within))) {
+                throw new Error(`None of elements [${ids.join(', ')}] appeared: ${(0, resolve_1.containerMissing)(step.within, ` within ${timeout}ms`)}`);
+            }
+            throw new Error(`None of elements [${ids.join(', ')}] appeared inside '${step.within}' within ${timeout}ms`);
         }
         throw new Error(`None of elements [${ids.join(', ')}] appeared within ${timeout}ms`);
     }
@@ -453,7 +460,7 @@ class ActionExecutor {
         if (!id) {
             throw new Error("selectOption requires 'id'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // Try to find a select element within the container
         const select = element.locator('select').first();
         const hasSelect = await select.count() > 0;
@@ -487,8 +494,8 @@ class ActionExecutor {
         }
         // Find the item using the generated id pattern: {collectionId}_item_{index}
         const itemId = `${id}_item_${index}`;
-        const element = await this.waitForElement(itemId, timeout);
-        await this.actionable('tapItem', itemId, timeout, (t) => element.click({ timeout: t }));
+        const element = await this.waitForElement(itemId, timeout, step.within);
+        await this.actionable('tapItem', itemId, timeout, step.within, (t) => element.click({ timeout: t }));
     }
     async executeSelectTab(step, timeout) {
         const id = step.id;
@@ -501,8 +508,8 @@ class ActionExecutor {
         }
         // Find the tab using the generated id pattern: {tabViewId}_tab_{index}
         const tabId = `${id}_tab_${index}`;
-        const element = await this.waitForElement(tabId, timeout);
-        await this.actionable('selectTab', tabId, timeout, (t) => element.click({ timeout: t }));
+        const element = await this.waitForElement(tabId, timeout, step.within);
+        await this.actionable('selectTab', tabId, timeout, step.within, (t) => element.click({ timeout: t }));
     }
     async executeScrollUntilVisible(step) {
         const id = step.id;
@@ -511,7 +518,9 @@ class ActionExecutor {
         }
         const direction = step.direction ?? 'down';
         const timeout = step.timeout ?? 20000;
-        const target = this.getLocator(id).first();
+        // With `within`, the target among that element's descendants; `container`
+        // keeps its meaning (the element to scroll).
+        const target = this.getLocator(id, step.within).first();
         // The same predicate as `visible` (src/visibility.ts): stop when some of
         // the target is in the viewport. isVisible() alone is true for an element
         // laid out below a scroll container's fold, so the search stopped before
@@ -561,7 +570,11 @@ class ActionExecutor {
         if (await searchLeg(reverse, Date.now() + Math.max(timeout / 2, 6000))) {
             return;
         }
-        throw new Error(`Element '${id}' not found after scrolling to both ends of ${step.container ? `'${step.container}'` : 'the page'}`);
+        const where = step.container ? `'${step.container}'` : 'the page';
+        if (step.within && !(await (0, resolve_1.containerPresent)(this.page, step.within))) {
+            throw new Error(`Element '${id}' not found after scrolling to both ends of ${where}: ${(0, resolve_1.containerMissing)(step.within)}`);
+        }
+        throw new Error(`Element ${(0, resolve_1.label)(id, step.within)} not found after scrolling to both ends of ${where}`);
     }
     /**
      * Scroll one step in the given direction. Returns a marker string describing the
@@ -668,7 +681,7 @@ class ActionExecutor {
         if (!variable) {
             throw new Error("readText requires 'variable'");
         }
-        const element = await this.waitForElement(id, timeout);
+        const element = await this.waitForElement(id, timeout, step.within);
         // For input/textarea, read value; otherwise text content
         const text = await element.evaluate((el) => {
             if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -713,15 +726,24 @@ class ActionExecutor {
         }
         let input;
         if (step.id) {
-            const target = this.getLocator(step.id).first();
-            await target.waitFor({ state: 'attached', timeout: step.timeout ?? this.defaultTimeout });
+            const target = this.getLocator(step.id, step.within).first();
+            const attachTimeout = step.timeout ?? this.defaultTimeout;
+            try {
+                await target.waitFor({ state: 'attached', timeout: attachTimeout });
+            }
+            catch (e) {
+                // Without `within` the failure is Playwright's, as before.
+                if (!step.within || !(0, visibility_1.isTimeoutError)(e))
+                    throw e;
+                throw new Error(`addMedia: ${await (0, resolve_1.notFound)(this.page, step.id, step.within, ` within ${attachTimeout}ms`)}`);
+            }
             const isFileInput = await target.evaluate((node) => node instanceof HTMLInputElement && node.type === 'file', undefined, { timeout: step.timeout ?? this.defaultTimeout });
             input = isFileInput ? target : target.locator('input[type="file"]').first();
         }
         else {
             input = this.page.locator('input[type="file"]').first();
         }
-        await this.actionable('addMedia', step.id, step.timeout ?? this.defaultTimeout, (t) => input.setInputFiles(resolved, { timeout: t }));
+        await this.actionable('addMedia', step.id, step.timeout ?? this.defaultTimeout, step.within, (t) => input.setInputFiles(resolved, { timeout: t }));
     }
     /**
      * Call a browser-side hook the app registered on window.__jsonuiTestHooks
@@ -778,20 +800,22 @@ class ActionExecutor {
     /**
      * Get locator for element by id attribute
      */
-    getLocator(id) {
-        return this.page.locator(`#${id}`);
+    getLocator(id, within) {
+        return (0, resolve_1.byId)(this.page, id, within);
     }
     /**
-     * Wait for element to appear by id attribute
+     * Wait for element to appear by id attribute — among `within`'s
+     * descendants when given (src/resolve.ts), the container and the target
+     * found inside the one step timeout. The failure names the missing part.
      */
-    async waitForElement(id, timeout) {
-        const element = this.getLocator(id);
+    async waitForElement(id, timeout, within) {
+        const element = this.getLocator(id, within);
         try {
             await element.first().waitFor({ state: 'visible', timeout });
             return element.first();
         }
         catch (error) {
-            throw new Error(`Element '${id}' not found by id within ${timeout}ms`);
+            throw new Error(await (0, resolve_1.notFound)(this.page, id, within, ` within ${timeout}ms`));
         }
     }
     /**
@@ -808,14 +832,14 @@ class ActionExecutor {
      * instead of the element. The auto-wait is unchanged; it now ends at the
      * step's timeout with what Playwright was waiting for.
      */
-    async actionable(action, id, timeout, op) {
+    async actionable(action, id, timeout, within, op) {
         try {
             return await op(timeout);
         }
         catch (e) {
             // By name, not class (isTimeoutError): the page may come from another playwright copy.
             if ((0, visibility_1.isTimeoutError)(e)) {
-                throw new Error(`${action} '${id ?? '(no id)'}': not actionable within ${timeout}ms — ${actionabilityReason(e.message)}`);
+                throw new Error(`${action} ${(0, resolve_1.label)(id ?? '(no id)', within)}: not actionable within ${timeout}ms — ${actionabilityReason(e.message)}`);
             }
             throw e;
         }
@@ -828,7 +852,7 @@ class ActionExecutor {
         // (test-partialattributes-subrange-tap-misses-on-centered-matchparent-label).
         const rangeTarget = element.getByText(targetText, { exact: true }).first();
         if ((await rangeTarget.count()) > 0) {
-            await this.actionable('tap', targetText, timeout, (t) => rangeTarget.click({ timeout: t }));
+            await this.actionable('tap', targetText, timeout, undefined, (t) => rangeTarget.click({ timeout: t }));
             return;
         }
         // Bounded, as boundingBox below: the step fails inside its timeout if the
@@ -844,7 +868,7 @@ class ActionExecutor {
         const endIndex = startIndex + targetText.length;
         const totalLength = fullText.length;
         if (totalLength === 0) {
-            await this.actionable('tap', targetText, timeout, (t) => element.click({ timeout: t }));
+            await this.actionable('tap', targetText, timeout, undefined, (t) => element.click({ timeout: t }));
             return;
         }
         // Calculate the center position of the target text (as a ratio of the element width)

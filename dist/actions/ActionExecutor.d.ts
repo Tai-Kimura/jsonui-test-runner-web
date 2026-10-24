@@ -97,7 +97,9 @@ export declare class ActionExecutor {
      */
     private getLocator;
     /**
-     * Wait for element to appear by id attribute
+     * Wait for element to appear by id attribute — among `within`'s
+     * descendants when given (src/resolve.ts), the container and the target
+     * found inside the one step timeout. The failure names the missing part.
      */
     private waitForElement;
     /**

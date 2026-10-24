@@ -42,6 +42,7 @@ const path = __importStar(require("path"));
 const ActionExecutor_1 = require("../actions/ActionExecutor");
 const AssertionExecutor_1 = require("../assertions/AssertionExecutor");
 const visibility_1 = require("../visibility");
+const resolve_1 = require("../resolve");
 const types_1 = require("../models/types");
 const failureReason_1 = require("./failureReason");
 const TestLoader_1 = require("./TestLoader");
@@ -676,6 +677,13 @@ class JsonUITestRunner {
                 for (const screenId of Object.keys(screens))
                     this.pendingReceipts.set(screenId, launchId);
             }
+            // The first screen's ready gate and the 500 ms, as a screen test has
+            // them before its setup: without them the flow's first step ran on a
+            // page still drawing — text typed into a field before the screen drew
+            // was wiped by the drawing (2026-10-23, drivers/web 1.17.1).
+            this.log('Waiting for the first screen to be ready...');
+            await this.waitForFlowFirstScreen(test);
+            await this.page.waitForTimeout(500);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -1037,18 +1045,27 @@ class JsonUITestRunner {
                 return false;
             }
         }
+        // A `within` container that is not there: the condition is not met,
+        // whichever of visible / notVisible / hidden it holds (as the assertions
+        // fail) — a cell that is not drawn says nothing about its children.
+        if (condition.within && !(await (0, resolve_1.containerPresent)(this.page, condition.within))) {
+            if (condition.visible !== undefined || condition.notVisible !== undefined
+                || condition.hidden !== undefined) {
+                return false;
+            }
+        }
         if (condition.visible !== undefined) {
-            if (!(await this.isInstantlyVisible(condition.visible))) {
+            if (!(await this.isInstantlyVisible(condition.visible, condition.within))) {
                 return false;
             }
         }
         if (condition.notVisible !== undefined) {
-            if (await this.isInstantlyVisible(condition.notVisible)) {
+            if (await this.isInstantlyVisible(condition.notVisible, condition.within)) {
                 return false;
             }
         }
         if (condition.hidden !== undefined) {
-            if (!(await (0, visibility_1.isHidden)(this.page.locator(`#${condition.hidden}`)))) {
+            if (!(await (0, visibility_1.isHidden)((0, resolve_1.byId)(this.page, condition.hidden, condition.within)))) {
                 return false;
             }
         }
@@ -1149,9 +1166,11 @@ class JsonUITestRunner {
         return (0, types_1.matchesResponsive)(condition, size, this.config.responsive);
     }
     /** Instant visibility check (no polling) used by `when` conditions — the
-     * same predicate as the `visible` assert (src/visibility.ts). */
-    async isInstantlyVisible(id) {
-        return (0, visibility_1.isInViewport)(this.page.locator(`#${id}`));
+     * same predicate as the `visible` assert (src/visibility.ts). With
+     * `within`, among that element's descendants (src/resolve.ts): a container
+     * that is not there is not visible. */
+    async isInstantlyVisible(id, within) {
+        return (0, visibility_1.isInViewport)((0, resolve_1.byId)(this.page, id, within));
     }
     async executeFlowSteps(steps, warnings) {
         for (let index = 0; index < steps.length; index++) {
@@ -1299,6 +1318,7 @@ class JsonUITestRunner {
             when: step.when,
             retryTapIfNoChange: step.retryTapIfNoChange,
             container: step.container,
+            within: step.within,
             variable: step.variable,
             times: step.times,
             while: step.while,
@@ -1420,6 +1440,32 @@ class JsonUITestRunner {
         else {
             this.log(`Waiting for the '${screenId}' screen marker...`);
         }
+        await this.awaitMarker(screenId);
+    }
+    /**
+     * A flow's first screen: the screen of its first step (setup first), an
+     * inline step's own or the referenced file's (from its source.layout). Its
+     * marker is awaited for screenReadyTimeout; a first step that names none (a
+     * block, a step with no screen) waits for 'networkidle', as does
+     * screenReadyStrategy 'networkidle'. The one wait, before setup: a retried
+     * body does not reload, so it starts on the screen already drawn.
+     */
+    async waitForFlowFirstScreen(test) {
+        const first = [...(test.setup ?? []), ...test.steps][0];
+        let screenId;
+        if (first && (0, types_1.isFileReference)(first)) {
+            screenId = (0, screenIdentity_1.screenIdFromLayout)(TestLoader_1.TestLoader.resolveFileReference(first.file).source?.layout) ?? undefined;
+        }
+        else if (first && !(0, types_1.isBlockStep)(first)) {
+            screenId = first.screen;
+        }
+        if (this.config.screenReadyStrategy === 'networkidle' || !screenId) {
+            this.notice(`flow ready: 'networkidle' gate (${screenId ? 'forced by screenReadyStrategy' : 'the first step names no screen'}). ` +
+                'A single hung request holds this open until the flow times out.');
+            await this.page.waitForLoadState('networkidle', { timeout: this.config.screenReadyTimeout });
+            return;
+        }
+        this.log(`Waiting for the '${screenId}' screen marker...`);
         await this.awaitMarker(screenId);
     }
     /** Wait for one screen marker, or fail with the gate's own context added. */

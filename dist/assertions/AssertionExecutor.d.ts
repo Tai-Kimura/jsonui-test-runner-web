@@ -100,7 +100,8 @@ export declare class AssertionExecutor {
     private assertScreenshot;
     private requireId;
     /**
-     * Get locator for element by id attribute
+     * Every element with the id attribute — among `within`'s descendants when
+     * given (src/resolve.ts byId)
      */
     private getLocator;
     /** Bounded (src/visibility.ts probe): DETACHED when the element left the DOM. */

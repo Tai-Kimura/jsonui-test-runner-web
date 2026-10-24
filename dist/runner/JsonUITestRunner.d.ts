@@ -350,7 +350,9 @@ export declare class JsonUITestRunner {
     private withOrientation;
     private currentSizeMatches;
     /** Instant visibility check (no polling) used by `when` conditions — the
-     * same predicate as the `visible` assert (src/visibility.ts). */
+     * same predicate as the `visible` assert (src/visibility.ts). With
+     * `within`, among that element's descendants (src/resolve.ts): a container
+     * that is not there is not visible. */
     private isInstantlyVisible;
     private executeFlowSteps;
     /**
@@ -403,6 +405,15 @@ export declare class JsonUITestRunner {
      * such tests with it costs the other hundred-odd the protection above.
      */
     private waitForScreenReady;
+    /**
+     * A flow's first screen: the screen of its first step (setup first), an
+     * inline step's own or the referenced file's (from its source.layout). Its
+     * marker is awaited for screenReadyTimeout; a first step that names none (a
+     * block, a step with no screen) waits for 'networkidle', as does
+     * screenReadyStrategy 'networkidle'. The one wait, before setup: a retried
+     * body does not reload, so it starts on the screen already drawn.
+     */
+    private waitForFlowFirstScreen;
     /** Wait for one screen marker, or fail with the gate's own context added. */
     private awaitMarker;
 }

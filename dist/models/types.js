@@ -30,6 +30,7 @@ exports.KNOWN_CONDITION_KEYS = new Set([
     'visible',
     'notVisible',
     'hidden',
+    'within',
     'platform',
     'responsive',
     'state'
