@@ -204,11 +204,18 @@ describe('within: which part is missing', () => {
       .rejects.toThrow("Element 'nope' not found inside 'list_item_1'");
   });
 
-  it('a missing container: visible fails, notVisible and hidden hold', async () => {
-    await expect(check({ assert: 'visible', id: 'label', within: 'list_item_9' }))
+  it('a missing container: visible, notVisible, hidden and count all fail, naming it', async () => {
+    for (const assert of ['visible', 'notVisible', 'hidden'] as const) {
+      await expect(check({ assert, id: 'label', within: 'list_item_9' }))
+        .rejects.toThrow("Container 'list_item_9' (within) not found by id");
+    }
+    await expect(check({ assert: 'count', id: 'label', within: 'list_item_9', equals: 0 }))
       .rejects.toThrow("Container 'list_item_9' (within) not found by id");
-    await check({ assert: 'notVisible', id: 'label', within: 'list_item_9' });
-    await check({ assert: 'hidden', id: 'label', within: 'list_item_9' });
+  });
+
+  it('a cell that is gone is claimed on the cell itself, without within', async () => {
+    await check({ assert: 'hidden', id: 'list_item_9' });
+    await check({ assert: 'notVisible', id: 'list_item_9' });
   });
 });
 
@@ -286,9 +293,9 @@ describe('within on a condition', () => {
     expect(await run({ hidden: 'flag', within: 'list_item_1' })).toBe('skipped');
   });
 
-  it('a container that is not there: visible unmet, notVisible and hidden met', async () => {
+  it('a container that is not there: visible, notVisible and hidden all unmet', async () => {
     expect(await run({ visible: 'label', within: 'list_item_9' })).toBe('skipped');
-    expect(await run({ notVisible: 'label', within: 'list_item_9' })).toBe('ran');
-    expect(await run({ hidden: 'label', within: 'list_item_9' })).toBe('ran');
+    expect(await run({ notVisible: 'label', within: 'list_item_9' })).toBe('skipped');
+    expect(await run({ hidden: 'label', within: 'list_item_9' })).toBe('skipped');
   });
 });

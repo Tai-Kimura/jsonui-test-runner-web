@@ -8,7 +8,7 @@ import { Page } from 'playwright';
 import { ActionExecutor } from '../actions/ActionExecutor';
 import { AssertionExecutor } from '../assertions/AssertionExecutor';
 import { isHidden, isInViewport } from '../visibility';
-import { byId } from '../resolve';
+import { byId, containerPresent } from '../resolve';
 import {
   LoadedTest,
   ScreenTest,
@@ -1259,6 +1259,15 @@ export class JsonUITestRunner {
     }
     if (condition.responsive !== undefined) {
       if (!(await this.currentSizeMatches(condition.responsive))) {
+        return false;
+      }
+    }
+    // A `within` container that is not there: the condition is not met,
+    // whichever of visible / notVisible / hidden it holds (as the assertions
+    // fail) — a cell that is not drawn says nothing about its children.
+    if (condition.within && !(await containerPresent(this.page, condition.within))) {
+      if (condition.visible !== undefined || condition.notVisible !== undefined
+          || condition.hidden !== undefined) {
         return false;
       }
     }

@@ -169,8 +169,11 @@ descendants the id is looked up among.
 ```
 
 A cell is in the DOM only while it is drawn: `scrollUntilVisible` to it first.
-When the container is not there, `visible` fails (naming the container),
-`notVisible` and `hidden` hold, and `count` fails. `scrollUntilVisible`'s own
+When the container is not there, every step fails naming the container —
+`visible`, `notVisible`, `hidden` and `count` alike (a cell that is not drawn
+would otherwise pass "this cell's badge is not shown") — and a condition with
+`within` is not met. To claim that a cell itself is not shown, assert
+`hidden` on the cell's id without `within`. `scrollUntilVisible`'s own
 `container` keeps its meaning (the element to scroll).
 
 `hidden` holds when no element with the id (inside `within`, when given) is
