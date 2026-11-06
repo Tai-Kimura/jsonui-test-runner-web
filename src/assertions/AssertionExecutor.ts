@@ -182,10 +182,25 @@ export class AssertionExecutor {
     const locator = this.page.locator(`[data-screen="${screenId}"]`);
 
     await this.pollUntil(timeout, async () => {
-      if ((await locator.count()) === 0) return await this.screenDiagnosis(screenId);
+      if ((await locator.count()) === 0) {
+        // The list is the verdict and the sentence, one read: a screen that came
+        // after the count read "'x' is not displayed; displayed screens are ["x"]".
+        const present = await this.presentScreens();
+        if (!present.includes(screenId)) return this.screenDiagnosis(screenId, present);
+      }
       if (await locator.first().isVisible()) return null;
       return `marker-not-displayed: screen '${screenId}' is present but not visible`;
     });
+  }
+
+  /** The screens whose markers are in the page, one read. A page navigating away has none. */
+  private presentScreens(): Promise<string[]> {
+    return this.page
+      .locator('[data-screen]')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => n.getAttribute('data-screen')).filter((v): v is string => !!v)
+      )
+      .catch(() => [] as string[]);
   }
 
   /**
@@ -195,14 +210,7 @@ export class AssertionExecutor {
    * code), while the previous screen still being the only one present points
    * at the app or the test: the navigation did not happen.
    */
-  private async screenDiagnosis(screenId: string): Promise<string> {
-    const present = await this.page
-      .locator('[data-screen]')
-      .evaluateAll((nodes) =>
-        nodes.map((n) => n.getAttribute('data-screen')).filter((v): v is string => !!v)
-      )
-      .catch(() => [] as string[]);
-
+  private screenDiagnosis(screenId: string, present: string[]): string {
     if (present.length === 0) {
       // Name what the browser is actually showing: a redirect (auth wall,
       // error page) also has no markers, and there the build is not the
