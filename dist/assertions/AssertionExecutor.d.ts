@@ -72,6 +72,8 @@ export declare class AssertionExecutor {
      * Throws the last diagnosis on timeout.
      */
     waitForScreenMarker(screenId: string, timeout: number): Promise<void>;
+    /** The screens whose markers are in the page, one read. A page navigating away has none. */
+    private presentScreens;
     /**
      * Canonical failure classes. The class names the likely CAUSE, not a
      * severity — every one of them fails the assertion just the same. A missing
