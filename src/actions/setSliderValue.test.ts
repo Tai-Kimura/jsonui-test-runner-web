@@ -174,9 +174,9 @@ describe('setSliderValue: what the browser would change fails before the input i
   it('outside the bounds names the bound; nothing moves and no event fires', async () => {
     const { p, any } = page();
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10', value: 11 })))
-      .rejects.toThrow("setSliderValue 's1to10': 11 is above the slider's maximum 10 (bounds [1, 10]); nothing was moved");
+      .rejects.toThrow("setSliderValue 's1to10': 11 is above the slider's range [1, 10]; the nearest value it can take is 10");
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10', value: 0 })))
-      .rejects.toThrow("0 is below the slider's minimum 1");
+      .rejects.toThrow("0 is below the slider's range [1, 10]; the nearest value it can take is 1");
     expect(any.value).toBe('5');
     expect(any.events).toEqual([]);
   });
@@ -184,7 +184,7 @@ describe('setSliderValue: what the browser would change fails before the input i
   it('off the step grid names the two nearest values; nothing moves and no event fires', async () => {
     const { p, step1, tenth } = page();
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10step1', value: 9.4 })))
-      .rejects.toThrow("9.4 is not on the slider's step grid (min 1, step 1); the nearest values are 9 and 10; nothing was moved");
+      .rejects.toThrow("9.4 is not on the slider's steps (1 + k * 1); the nearest values are 9 and 10");
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's0to1tenth', value: 0.25 })))
       .rejects.toThrow('the nearest values are 0.2 and 0.3');
     expect(step1.value).toBe('5');
@@ -195,16 +195,16 @@ describe('setSliderValue: what the browser would change fails before the input i
   it('a declared range that is not the input\'s names the input\'s', async () => {
     const { p, any } = page();
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10', value: 5, range: [0, 10] })))
-      .rejects.toThrow("range [0, 10] differs from the slider's own [1, 10]");
+      .rejects.toThrow("the step declares range [0, 10] but the slider's own is [1, 10]");
     expect(any.events).toEqual([]);
   });
 
   it('a declared step that is not the input\'s names the input\'s, "any" included', async () => {
     const { p, any, step1 } = page();
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10', value: 5, step: 1 })))
-      .rejects.toThrow("step 1 differs from the slider's own step any");
+      .rejects.toThrow("the step declares step 1 but the slider's own is any");
     await expect(act(p).execute(step({ action: 'setSliderValue', id: 's1to10step1', value: 5, step: 0.5 })))
-      .rejects.toThrow("step 0.5 differs from the slider's own step 1");
+      .rejects.toThrow("the step declares step 0.5 but the slider's own is 1");
     expect(any.events).toEqual([]);
     expect(step1.events).toEqual([]);
   });

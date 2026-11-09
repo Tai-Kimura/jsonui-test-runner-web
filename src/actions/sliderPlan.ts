@@ -86,26 +86,26 @@ export function refusal(id: string, input: RangeInput, decl: SliderDeclaration):
   if (decl.range !== undefined) {
     const [lo, hi] = decl.range;
     if (!same(lo, input.min) || !same(hi, input.max)) {
-      return `setSliderValue '${id}': range [${show(lo)}, ${show(hi)}] differs from the slider's own ${bounds}`;
+      return `setSliderValue '${id}': the step declares range [${show(lo)}, ${show(hi)}] but the slider's own is ${bounds}`;
     }
   }
   if (decl.step !== undefined) {
     if (input.step === null || !same(decl.step, input.step)) {
-      return `setSliderValue '${id}': step ${show(decl.step)} differs from the slider's own step ${stepText}`;
+      return `setSliderValue '${id}': the step declares step ${show(decl.step)} but the slider's own is ${stepText}`;
     }
   }
   if (!Number.isFinite(decl.value)) {
     return `setSliderValue '${id}': value is not a number`;
   }
   if (decl.value < input.min && !same(decl.value, input.min)) {
-    return `setSliderValue '${id}': ${show(decl.value)} is below the slider's minimum ${show(input.min)} (bounds ${bounds}); nothing was moved`;
+    return `setSliderValue '${id}': ${show(decl.value)} is below the slider's range ${bounds}; the nearest value it can take is ${show(input.min)}`;
   }
   if (decl.value > input.max && !same(decl.value, input.max)) {
-    return `setSliderValue '${id}': ${show(decl.value)} is above the slider's maximum ${show(input.max)} (bounds ${bounds}); nothing was moved`;
+    return `setSliderValue '${id}': ${show(decl.value)} is above the slider's range ${bounds}; the nearest value it can take is ${show(input.max)}`;
   }
   if (input.step !== null && !onGrid(decl.value, input.min, input.step)) {
     const [below, above] = neighbours(decl.value, input, input.step);
-    return `setSliderValue '${id}': ${show(decl.value)} is not on the slider's step grid (min ${show(input.min)}, step ${stepText}); the nearest values are ${show(below)} and ${show(above)}; nothing was moved`;
+    return `setSliderValue '${id}': ${show(decl.value)} is not on the slider's steps (${show(input.min)} + k * ${stepText}); the nearest values are ${show(below)} and ${show(above)}`;
   }
   return null;
 }
