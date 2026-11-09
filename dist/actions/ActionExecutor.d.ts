@@ -66,6 +66,16 @@ export declare class ActionExecutor {
      */
     private scrollOneStep;
     private executeReadText;
+    /**
+     * Put a Slider (a range input) at a value in its own units
+     * (schemas/actions.schema.json setSliderValueAction). Everything that
+     * would make the browser sanitise the value — outside the bounds, off the
+     * step grid — and a declared range / step that is not the input's, fails
+     * here, before the input is touched (sliderPlan.ts says why: the DOM and
+     * the app's state would part). Then one fill, which a browser delivers as
+     * one input event and one change event, and the value read back.
+     */
+    private executeSetSliderValue;
     private executeSetLocation;
     /**
      * Set files on a file input. Paths resolve relative to the test file's

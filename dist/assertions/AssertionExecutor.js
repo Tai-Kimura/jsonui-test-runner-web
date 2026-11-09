@@ -51,6 +51,7 @@ const path = __importStar(require("path"));
 const visibility_1 = require("../visibility");
 const resolve_1 = require("../resolve");
 const reasonHistory_1 = require("./reasonHistory");
+const sliderPlan_1 = require("../actions/sliderPlan");
 const pngjs_1 = require("pngjs");
 const pixelmatch_1 = __importDefault(require("pixelmatch"));
 const types_1 = require("../models/types");
@@ -100,6 +101,9 @@ class AssertionExecutor {
                 break;
             case 'count':
                 await this.assertCount(step, timeout);
+                break;
+            case 'value':
+                await this.assertValue(step, timeout);
                 break;
             case 'state':
                 await this.assertState(step, timeout);
@@ -329,6 +333,49 @@ class AssertionExecutor {
                 ? null
                 : `Expected text containing '${step.contains}' but got '${actualText}' for element ${(0, resolve_1.label)(id, within)}`;
         });
+    }
+    /**
+     * A Slider's current value: the range input's own `value` (the element, or
+     * the first range input inside it), read as a number. Passes when
+     * |read - equals| <= tolerance (default 1e-6: the input holds the number
+     * written). `range` and `step` are iOS's (a percentage reading, the default
+     * tolerance); here the input is read directly.
+     */
+    async assertValue(step, timeout) {
+        const id = this.requireId(step, 'value');
+        const expected = typeof step.equals === 'string' ? Number(step.equals) : step.equals;
+        if (typeof expected !== 'number' || !Number.isFinite(expected)) {
+            throw new Error("value requires a number in 'equals'");
+        }
+        const tolerance = step.tolerance ?? sliderPlan_1.DEFAULT_VALUE_TOLERANCE;
+        const within = step.within;
+        await this.pollUntil(timeout, async () => {
+            const element = this.getLocator(id, within).first();
+            if (await element.count() === 0) {
+                return (0, resolve_1.notFound)(this.page, id, within);
+            }
+            const read = await this.readSliderValue(element);
+            if (read === visibility_1.DETACHED)
+                return (0, resolve_1.notFound)(this.page, id, within);
+            if (read === null) {
+                return `Element ${(0, resolve_1.label)(id, within)} is not a slider: no input[type=range] on it or inside it`;
+            }
+            const actual = Number(read);
+            if (!Number.isFinite(actual)) {
+                return `Expected value ${(0, sliderPlan_1.show)(expected)} but the slider ${(0, resolve_1.label)(id, within)} reads '${read}'`;
+            }
+            return Math.abs(actual - expected) <= tolerance
+                ? null
+                : `Expected value ${(0, sliderPlan_1.show)(expected)} (tolerance ${(0, sliderPlan_1.show)(tolerance)}) but the slider ${(0, resolve_1.label)(id, within)} is at ${(0, sliderPlan_1.show)(actual)}`;
+        });
+    }
+    /** The range input's value string, null when there is none, DETACHED when the element left. */
+    async readSliderValue(element) {
+        return (0, visibility_1.probe)((timeout) => element.evaluate((el) => {
+            const isRange = (e) => e instanceof HTMLInputElement && e.type === 'range';
+            const input = isRange(el) ? el : el.querySelector('input[type="range"]');
+            return isRange(input) ? input.value : null;
+        }, undefined, { timeout }));
     }
     async assertCount(step, timeout) {
         const id = this.requireId(step, 'count');

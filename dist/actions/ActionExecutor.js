@@ -47,6 +47,7 @@ const types_1 = require("../models/types");
 const TestLoader_1 = require("../runner/TestLoader");
 const visibility_1 = require("../visibility");
 const resolve_1 = require("../resolve");
+const sliderPlan_1 = require("./sliderPlan");
 /**
  * Why Playwright could not act, from its timeout message: the last line of the
  * call log that states a condition ("element is not enabled", "<div> intercepts
@@ -140,6 +141,9 @@ class ActionExecutor {
             case 'readText':
                 await this.executeReadText(step, timeout);
                 break;
+            case 'setSliderValue':
+                await this.executeSetSliderValue(step, timeout);
+                break;
             case 'setLocation':
                 await this.executeSetLocation(step);
                 break;
@@ -204,10 +208,10 @@ class ActionExecutor {
         if (!id) {
             throw new Error("input requires 'id'");
         }
-        const value = step.value;
-        if (value === undefined) {
+        if (step.value === undefined) {
             throw new Error("input requires 'value'");
         }
+        const value = String(step.value);
         const element = await this.waitForElement(id, timeout, step.within);
         // Try to find an input element within the container
         const input = element.locator('input, textarea').first();
@@ -227,10 +231,10 @@ class ActionExecutor {
      * (auto-focus or a prior tap); keyboard events route to document.activeElement.
      */
     async executeTypeText(step) {
-        const value = step.value;
-        if (value === undefined) {
+        if (step.value === undefined) {
             throw new Error("typeText requires 'value'");
         }
+        const value = String(step.value);
         await this.page.keyboard.type(value);
     }
     async executeClear(step, timeout) {
@@ -474,7 +478,7 @@ class ActionExecutor {
             await targetSelect.selectOption({ index: step.index });
         }
         else if (step.value !== undefined) {
-            await targetSelect.selectOption({ value: step.value });
+            await targetSelect.selectOption({ value: String(step.value) });
         }
         else if (step.label !== undefined) {
             await targetSelect.selectOption({ label: step.label });
@@ -694,6 +698,43 @@ class ActionExecutor {
             return el.textContent ?? '';
         }, undefined, { timeout });
         this.variables[variable] = text;
+    }
+    /**
+     * Put a Slider (a range input) at a value in its own units
+     * (schemas/actions.schema.json setSliderValueAction). Everything that
+     * would make the browser sanitise the value — outside the bounds, off the
+     * step grid — and a declared range / step that is not the input's, fails
+     * here, before the input is touched (sliderPlan.ts says why: the DOM and
+     * the app's state would part). Then one fill, which a browser delivers as
+     * one input event and one change event, and the value read back.
+     */
+    async executeSetSliderValue(step, timeout) {
+        const id = step.id;
+        if (!id) {
+            throw new Error("setSliderValue requires 'id'");
+        }
+        if (step.value === undefined) {
+            throw new Error("setSliderValue requires 'value'");
+        }
+        const value = typeof step.value === 'number' ? step.value : Number(step.value);
+        const element = await this.waitForElement(id, timeout, step.within);
+        const self = await element.evaluate((el) => el instanceof HTMLInputElement && el.type === 'range', undefined, { timeout });
+        const input = self ? element : element.locator('input[type="range"]').first();
+        if (!self && (await input.count()) === 0) {
+            throw new Error(`setSliderValue '${id}': the element is not a slider (no input[type=range] on it or inside it)`);
+        }
+        const attrs = await input.evaluate((el) => [el.getAttribute('min'), el.getAttribute('max'), el.getAttribute('step')], undefined, { timeout });
+        const slider = (0, sliderPlan_1.readRangeAttributes)(attrs[0], attrs[1], attrs[2]);
+        const refused = (0, sliderPlan_1.refusal)(id, slider, { value, range: step.range, step: step.step });
+        if (refused !== null) {
+            throw new Error(refused);
+        }
+        // String(value) of an on-grid number is what the input keeps (no exponent below 1e21).
+        await this.actionable('setSliderValue', id, timeout, step.within, (t) => input.fill(String(value), { timeout: t }));
+        const landed = Number(await input.inputValue({ timeout }));
+        if (!(0, sliderPlan_1.same)(landed, value)) {
+            throw new Error(`setSliderValue '${id}': the slider is at ${(0, sliderPlan_1.show)(landed)} after setting ${(0, sliderPlan_1.show)(value)}`);
+        }
     }
     async executeSetLocation(step) {
         const { latitude, longitude } = step;

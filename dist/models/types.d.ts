@@ -135,7 +135,8 @@ export interface FlowTestStep {
     id?: string;
     ids?: string[];
     text?: string;
-    value?: string;
+    /** Text for input / typeText / selectOption; a number for setSliderValue */
+    value?: string | number;
     direction?: 'up' | 'down' | 'left' | 'right';
     duration?: number;
     timeout?: number;
@@ -163,6 +164,12 @@ export interface FlowTestStep {
     within?: string;
     /** Runtime variable name for readText */
     variable?: string;
+    /** setSliderValue / value assertion: the slider's [minimum, maximum] as the layout declares it */
+    range?: number[];
+    /** setSliderValue / value assertion: the slider's step (grid min + k*step) */
+    step?: number;
+    /** value assertion: largest accepted difference (default 1e-6) */
+    tolerance?: number;
     /** Iteration count for repeat */
     times?: number;
     /** Loop condition for repeat */
@@ -318,7 +325,8 @@ export interface TestStep {
     id?: string;
     ids?: string[];
     text?: string;
-    value?: string;
+    /** Text for input / typeText / selectOption; a number for setSliderValue */
+    value?: string | number;
     direction?: 'up' | 'down' | 'left' | 'right';
     duration?: number;
     timeout?: number;
@@ -346,6 +354,12 @@ export interface TestStep {
     within?: string;
     /** Runtime variable name for readText */
     variable?: string;
+    /** setSliderValue / value assertion: the slider's [minimum, maximum] as the layout declares it */
+    range?: number[];
+    /** setSliderValue / value assertion: the slider's step (grid min + k*step) */
+    step?: number;
+    /** value assertion: largest accepted difference (default 1e-6) */
+    tolerance?: number;
     /** Iteration count for repeat */
     times?: number;
     /** Loop condition for repeat */
@@ -375,8 +389,8 @@ export interface TestStep {
     /** Target orientation for setOrientation */
     orientation?: ResponsiveOrientation;
 }
-export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation' | 'emitHook';
-export type AssertionType = 'visible' | 'notVisible' | 'hidden' | 'enabled' | 'disabled' | 'text' | 'count' | 'state' | 'screenshot' | 'openedUrl' | 'screen';
+export type ActionType = 'tap' | 'doubleTap' | 'longPress' | 'input' | 'typeText' | 'clear' | 'scroll' | 'scrollUntilVisible' | 'swipe' | 'waitFor' | 'waitForAny' | 'wait' | 'back' | 'hideKeyboard' | 'screenshot' | 'alertTap' | 'selectOption' | 'tapItem' | 'selectTab' | 'readText' | 'setSliderValue' | 'repeat' | 'retry' | 'setLocation' | 'addMedia' | 'setMocks' | 'setViewport' | 'setOrientation' | 'emitHook';
+export type AssertionType = 'visible' | 'notVisible' | 'hidden' | 'enabled' | 'disabled' | 'text' | 'count' | 'value' | 'state' | 'screenshot' | 'openedUrl' | 'screen';
 export type PlatformTarget = string | string[];
 export declare function platformIncludes(target: PlatformTarget | undefined, platform: string): boolean;
 /** Why a skipped result was skipped; only set for gate-caused skips (results.schema.json skipReason) */

@@ -90,6 +90,16 @@ export declare class AssertionExecutor {
     private assertEnabled;
     private assertDisabled;
     private assertText;
+    /**
+     * A Slider's current value: the range input's own `value` (the element, or
+     * the first range input inside it), read as a number. Passes when
+     * |read - equals| <= tolerance (default 1e-6: the input holds the number
+     * written). `range` and `step` are iOS's (a percentage reading, the default
+     * tolerance); here the input is read directly.
+     */
+    private assertValue;
+    /** The range input's value string, null when there is none, DETACHED when the element left. */
+    private readSliderValue;
     private assertCount;
     private assertState;
     /**

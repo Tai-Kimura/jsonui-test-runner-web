@@ -195,6 +195,7 @@ drawn: every match is looked at, so one drawn copy fails it.
 | `wait` | Wait for duration | `ms` |
 | `back` | Navigate back | - |
 | `screenshot` | Take screenshot | `name?` |
+| `setSliderValue` | Put a Slider (range input) at a value | `id`, `value`, `range?`, `step?` |
 
 ## Available Assertions
 
@@ -206,6 +207,26 @@ drawn: every match is looked at, so one drawn copy fails it.
 | `disabled` | Element is disabled | `id` |
 | `text` | Text verification | `id`, `equals?`, `contains?` |
 | `count` | Element count | `id`, `equals` |
+| `value` | A Slider's current value | `id`, `equals`, `tolerance?` |
+
+### Sliders: `setSliderValue` and `value` (1.19.0)
+
+```json
+{ "action": "setSliderValue", "id": "rating_1", "value": 9, "range": [1, 10], "step": 1 }
+{ "assert": "value", "id": "rating_1", "equals": 9 }
+```
+
+The value is in the slider's own units. The range input is the element named
+or the first one inside it. Before the input is touched, a value outside its
+`min`/`max`, or off its step grid (which starts at `min`), fails the step and
+names the bound or the two nearest values; a declared `range` or `step` that
+is not the input's fails naming the input's own (`step="any"` included). Left
+to the browser, such a value is sanitised in the DOM with no input event, and
+the page and the app's state part. Otherwise one fill puts the value in
+exactly — one `input` event and one `change` event, as a user's release — and
+the value is read back. `value` reads the input's value and passes within
+`tolerance` (default 1e-6); `readText` reads it as text. To check what the app
+keeps or sends, assert `state` on the bound data.
 
 ## Configuration
 

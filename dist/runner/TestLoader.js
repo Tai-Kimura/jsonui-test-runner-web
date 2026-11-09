@@ -284,7 +284,7 @@ class TestLoader {
             id: this.substituteArgsInString(step.id, args),
             ids: step.ids?.map(id => this.substituteArgsInString(id, args) ?? id),
             text: this.substituteArgsInString(step.text, args),
-            value: this.substituteArgsInString(step.value, args),
+            value: this.substituteArgsInValue(step.value, args),
             contains: this.substituteArgsInString(step.contains, args),
             button: this.substituteArgsInString(step.button, args),
             label: this.substituteArgsInString(step.label, args),

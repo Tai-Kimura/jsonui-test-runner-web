@@ -155,7 +155,8 @@ export interface FlowTestStep {
   id?: string;
   ids?: string[];
   text?: string;
-  value?: string;
+  /** Text for input / typeText / selectOption; a number for setSliderValue */
+  value?: string | number;
   direction?: 'up' | 'down' | 'left' | 'right';
   duration?: number;
   timeout?: number;
@@ -183,6 +184,12 @@ export interface FlowTestStep {
   within?: string;
   /** Runtime variable name for readText */
   variable?: string;
+  /** setSliderValue / value assertion: the slider's [minimum, maximum] as the layout declares it */
+  range?: number[];
+  /** setSliderValue / value assertion: the slider's step (grid min + k*step) */
+  step?: number;
+  /** value assertion: largest accepted difference (default 1e-6) */
+  tolerance?: number;
   /** Iteration count for repeat */
   times?: number;
   /** Loop condition for repeat */
@@ -426,7 +433,8 @@ export interface TestStep {
   id?: string;
   ids?: string[];
   text?: string;
-  value?: string;
+  /** Text for input / typeText / selectOption; a number for setSliderValue */
+  value?: string | number;
   direction?: 'up' | 'down' | 'left' | 'right';
   duration?: number;
   timeout?: number;
@@ -454,6 +462,12 @@ export interface TestStep {
   within?: string;
   /** Runtime variable name for readText */
   variable?: string;
+  /** setSliderValue / value assertion: the slider's [minimum, maximum] as the layout declares it */
+  range?: number[];
+  /** setSliderValue / value assertion: the slider's step (grid min + k*step) */
+  step?: number;
+  /** value assertion: largest accepted difference (default 1e-6) */
+  tolerance?: number;
   /** Iteration count for repeat */
   times?: number;
   /** Loop condition for repeat */
@@ -507,6 +521,7 @@ export type ActionType =
   | 'tapItem'
   | 'selectTab'
   | 'readText'
+  | 'setSliderValue'
   | 'repeat'
   | 'retry'
   | 'setLocation'
@@ -524,6 +539,7 @@ export type AssertionType =
   | 'disabled'
   | 'text'
   | 'count'
+  | 'value'
   | 'state'
   | 'screenshot'
   | 'openedUrl'
