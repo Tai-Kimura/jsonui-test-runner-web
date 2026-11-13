@@ -169,6 +169,12 @@ export interface FlowTestStep {
   button?: string;
   label?: string;
   index?: number;
+  /** moveItem: the row picked up and its index after the move (0-based, within section 0) */
+  from?: number;
+  to?: number;
+  section?: number;
+  /** moveItem: the Collection's reorderHandle id, pressed inside the from row */
+  handle?: string;
   /** When true, a failure of this step is recorded as a warning and execution continues */
   optional?: boolean;
   /** Pre-condition; step is skipped when not satisfied (also valid on file/block steps) */
@@ -447,6 +453,12 @@ export interface TestStep {
   button?: string;
   label?: string;
   index?: number;
+  /** moveItem: the row picked up and its index after the move (0-based, within section 0) */
+  from?: number;
+  to?: number;
+  section?: number;
+  /** moveItem: the Collection's reorderHandle id, pressed inside the from row */
+  handle?: string;
   /** When true, a failure of this step is recorded as a warning and execution continues */
   optional?: boolean;
   /** Pre-condition; step is skipped when not satisfied */
@@ -519,6 +531,7 @@ export type ActionType =
   | 'alertTap'
   | 'selectOption'
   | 'tapItem'
+  | 'moveItem'
   | 'selectTab'
   | 'readText'
   | 'setSliderValue'

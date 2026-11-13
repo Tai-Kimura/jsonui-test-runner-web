@@ -58,6 +58,13 @@ export declare class ActionExecutor {
     private executeAlertTap;
     private executeSelectOption;
     private executeTapItem;
+    /**
+     * moveItem (schemas moveItemAction): a reorderable Collection's row pressed
+     * 1.0 s (on its handle when the step gives one), dragged slowly, held 0.5 s
+     * and released over the to row — the plan is ./moveItem.ts, by the shared
+     * vectors. Nothing moves when the plan fails; the failure names the row.
+     */
+    private executeMoveItem;
     private executeSelectTab;
     private executeScrollUntilVisible;
     /**

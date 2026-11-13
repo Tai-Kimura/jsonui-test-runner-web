@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ROOT = path.join(__dirname, '../..');
-const NAMES = ['initial-state-payload.json', 'initial-state-coercion.json', 'state-path.json', 'results-prune.json'];
+const NAMES = ['initial-state-payload.json', 'initial-state-coercion.json', 'state-path.json', 'results-prune.json', 'move-item.json'];
 
 function sourceDir(): string | null {
   const candidates = [

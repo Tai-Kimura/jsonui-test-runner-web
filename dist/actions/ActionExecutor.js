@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ActionExecutor = void 0;
 exports.actionabilityReason = actionabilityReason;
+const moveItem_1 = require("./moveItem");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const types_1 = require("../models/types");
@@ -134,6 +135,9 @@ class ActionExecutor {
                 break;
             case 'tapItem':
                 await this.executeTapItem(step, timeout);
+                break;
+            case 'moveItem':
+                await this.executeMoveItem(step, timeout);
                 break;
             case 'selectTab':
                 await this.executeSelectTab(step, timeout);
@@ -500,6 +504,71 @@ class ActionExecutor {
         const itemId = `${id}_item_${index}`;
         const element = await this.waitForElement(itemId, timeout, step.within);
         await this.actionable('tapItem', itemId, timeout, step.within, (t) => element.click({ timeout: t }));
+    }
+    /**
+     * moveItem (schemas moveItemAction): a reorderable Collection's row pressed
+     * 1.0 s (on its handle when the step gives one), dragged slowly, held 0.5 s
+     * and released over the to row — the plan is ./moveItem.ts, by the shared
+     * vectors. Nothing moves when the plan fails; the failure names the row.
+     */
+    async executeMoveItem(step, timeout) {
+        const id = step.id;
+        if (!id) {
+            throw new Error("moveItem requires 'id'");
+        }
+        const { from, to } = step;
+        if (!Number.isInteger(from) || !Number.isInteger(to)) {
+            throw new Error("moveItem requires 'from' and 'to' (row indices)");
+        }
+        const fail = (reason) => {
+            throw new Error((0, moveItem_1.moveItemFailure)(reason, from, step.handle));
+        };
+        const early = (0, moveItem_1.planMoveItem)({ viewport: [0, 0, 0, 0], from: from, to: to, section: step.section, rows: {}, id });
+        if ('fail' in early && (early.fail === 'same' || early.fail === 'section'))
+            fail(early.fail);
+        // the two rows, waited for within the step's timeout (a row still absent is named by the plan)
+        const deadline = Date.now() + timeout;
+        for (const n of [from, to]) {
+            try {
+                await this.getLocator(`${id}_item_${n}`, step.within).first()
+                    .waitFor({ state: 'attached', timeout: Math.max(0, deadline - Date.now()) });
+            }
+            catch {
+                // missing: said by the plan
+            }
+        }
+        const rows = {};
+        for (const n of [from, to]) {
+            const address = `${id}_item_${n}`;
+            const found = this.getLocator(address, step.within);
+            const rects = [];
+            for (let i = 0; i < (await found.count()); i++) {
+                const b = await found.nth(i).boundingBox();
+                if (b)
+                    rects.push([b.x, b.y, b.width, b.height]);
+            }
+            rows[address] = rects;
+        }
+        let handle;
+        if (step.handle) {
+            const grip = this.getLocator(step.handle, `${id}_item_${from}`).first();
+            const b = (await grip.count()) ? await grip.boundingBox() : null;
+            handle = b ? [b.x, b.y, b.width, b.height] : null;
+        }
+        const size = this.page.viewportSize()
+            ?? await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+        const plan = (0, moveItem_1.planMoveItem)({ viewport: [0, 0, size.width, size.height], from: from, to: to,
+            section: step.section, rows, handle, id });
+        if ('fail' in plan)
+            fail(plan.fail);
+        const { press, release } = plan;
+        await this.page.mouse.move(press[0], press[1]);
+        await this.page.mouse.down();
+        await this.page.waitForTimeout(moveItem_1.MOVE_ITEM_TIMING.pressSeconds * 1000);
+        await this.page.mouse.move(release[0], release[1], { steps: 25 });
+        await this.page.waitForTimeout(moveItem_1.MOVE_ITEM_TIMING.holdSeconds * 1000);
+        await this.page.mouse.up();
+        await this.page.waitForTimeout(150);
     }
     async executeSelectTab(step, timeout) {
         const id = step.id;

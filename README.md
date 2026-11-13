@@ -196,6 +196,7 @@ drawn: every match is looked at, so one drawn copy fails it.
 | `back` | Navigate back | - |
 | `screenshot` | Take screenshot | `name?` |
 | `setSliderValue` | Put a Slider (range input) at a value | `id`, `value`, `range?`, `step?` |
+| `moveItem` | Drag a reorderable Collection's row to a new place | `id`, `from`, `to`, `handle?`, `section?` |
 
 ## Available Assertions
 
@@ -208,6 +209,28 @@ drawn: every match is looked at, so one drawn copy fails it.
 | `text` | Text verification | `id`, `equals?`, `contains?` |
 | `count` | Element count | `id`, `equals` |
 | `value` | A Slider's current value | `id`, `equals`, `tolerance?` |
+
+### Reordering rows: `moveItem` (1.20.0)
+
+```json
+{ "action": "moveItem", "id": "stops", "from": 0, "to": 2 }
+{ "action": "moveItem", "id": "stops", "from": 3, "to": 0, "handle": "grip" }
+```
+
+Drags a row of a reorderable Collection (`reorderable: true`) as a user does: the
+mouse presses the row `<id>_item_<from>` — or, with `handle`, the element of that id
+inside the row (the Collection's `reorderHandle`) — for 1 s, moves slowly to the row
+`<id>_item_<to>`, holds 0.5 s and releases over it at 3/4 of its height going down,
+1/4 going up (never on a row's centre). `to` is the row's index after the move, the
+`to` the view model's `onReorder` receives. Both rows must be on screen, and the press
+and the release at least 100px from the viewport's top and bottom (nearer, a list
+scrolls by itself under the held pointer and the row lands further): a row that is
+not fails the step naming it (scroll first; the drag does not scroll), as does
+`from` equal to `to`, a `section` other than 0, an address that is more than one
+element (several sections: v1 moves within one) and a `handle` not found in the row.
+The step only drags: assert the rows' new order, or the state the app keeps, after it.
+Where the press and the release land is jsonui-test-runner's
+`specs/vectors/move-item.json` (`test-fixtures/vectors`).
 
 ### Sliders: `setSliderValue` and `value` (1.19.0)
 

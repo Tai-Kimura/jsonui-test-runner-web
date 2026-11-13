@@ -5,6 +5,7 @@
  * Uses id attribute for element matching (ReactJsonUI exposes id as HTML id attribute)
  */
 
+import { planMoveItem, moveItemFailure, MOVE_ITEM_TIMING, Rect } from './moveItem';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Page, Locator } from 'playwright';
@@ -109,6 +110,9 @@ export class ActionExecutor {
         break;
       case 'tapItem':
         await this.executeTapItem(step, timeout);
+        break;
+      case 'moveItem':
+        await this.executeMoveItem(step, timeout);
         break;
       case 'selectTab':
         await this.executeSelectTab(step, timeout);
@@ -529,6 +533,70 @@ export class ActionExecutor {
     const itemId = `${id}_item_${index}`;
     const element = await this.waitForElement(itemId, timeout, step.within);
     await this.actionable('tapItem', itemId, timeout, step.within, (t) => element.click({ timeout: t }));
+  }
+
+  /**
+   * moveItem (schemas moveItemAction): a reorderable Collection's row pressed
+   * 1.0 s (on its handle when the step gives one), dragged slowly, held 0.5 s
+   * and released over the to row — the plan is ./moveItem.ts, by the shared
+   * vectors. Nothing moves when the plan fails; the failure names the row.
+   */
+  private async executeMoveItem(step: TestStep, timeout: number): Promise<void> {
+    const id = step.id;
+    if (!id) {
+      throw new Error("moveItem requires 'id'");
+    }
+    const { from, to } = step;
+    if (!Number.isInteger(from) || !Number.isInteger(to)) {
+      throw new Error("moveItem requires 'from' and 'to' (row indices)");
+    }
+    const fail = (reason: string): never => {
+      throw new Error(moveItemFailure(reason, from as number, step.handle));
+    };
+    const early = planMoveItem({ viewport: [0, 0, 0, 0], from: from as number, to: to as number, section: step.section, rows: {}, id });
+    if ('fail' in early && (early.fail === 'same' || early.fail === 'section')) fail(early.fail);
+
+    // the two rows, waited for within the step's timeout (a row still absent is named by the plan)
+    const deadline = Date.now() + timeout;
+    for (const n of [from, to] as number[]) {
+      try {
+        await this.getLocator(`${id}_item_${n}`, step.within).first()
+          .waitFor({ state: 'attached', timeout: Math.max(0, deadline - Date.now()) });
+      } catch {
+        // missing: said by the plan
+      }
+    }
+    const rows: Record<string, Rect[]> = {};
+    for (const n of [from, to] as number[]) {
+      const address = `${id}_item_${n}`;
+      const found = this.getLocator(address, step.within);
+      const rects: Rect[] = [];
+      for (let i = 0; i < (await found.count()); i++) {
+        const b = await found.nth(i).boundingBox();
+        if (b) rects.push([b.x, b.y, b.width, b.height]);
+      }
+      rows[address] = rects;
+    }
+    let handle: Rect | null | undefined;
+    if (step.handle) {
+      const grip = this.getLocator(step.handle, `${id}_item_${from}`).first();
+      const b = (await grip.count()) ? await grip.boundingBox() : null;
+      handle = b ? [b.x, b.y, b.width, b.height] : null;
+    }
+    const size = this.page.viewportSize()
+      ?? await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const plan = planMoveItem({ viewport: [0, 0, size.width, size.height], from: from as number, to: to as number,
+                                section: step.section, rows, handle, id });
+    if ('fail' in plan) fail(plan.fail);
+    const { press, release } = plan as { press: [number, number]; release: [number, number] };
+
+    await this.page.mouse.move(press[0], press[1]);
+    await this.page.mouse.down();
+    await this.page.waitForTimeout(MOVE_ITEM_TIMING.pressSeconds * 1000);
+    await this.page.mouse.move(release[0], release[1], { steps: 25 });
+    await this.page.waitForTimeout(MOVE_ITEM_TIMING.holdSeconds * 1000);
+    await this.page.mouse.up();
+    await this.page.waitForTimeout(150);
   }
 
   private async executeSelectTab(step: TestStep, timeout: number): Promise<void> {
