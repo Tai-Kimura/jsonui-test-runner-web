@@ -5,7 +5,7 @@
  * Uses id attribute for element matching (ReactJsonUI exposes id as HTML id attribute)
  */
 
-import { planMoveItem, moveItemFailure, MOVE_ITEM_TIMING, Rect } from './moveItem';
+import { planMoveItem, moveItemFailure, scrolledDuring, scrolledSentence, MOVE_ITEM_TIMING, Rect } from './moveItem';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Page, Locator } from 'playwright';
@@ -585,10 +585,57 @@ export class ActionExecutor {
     }
     const size = this.page.viewportSize()
       ?? await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    // the list that scrolls the rows: the from row's nearest scrollable ancestor (none when the page scrolls)
+    let list: Rect | undefined;
+    const fromRow = this.getLocator(`${id}_item_${from}`, step.within);
+    if ((await fromRow.count()) === 1) {
+      const box = await fromRow.first().evaluate((el) => {
+        for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+          const overflow = getComputedStyle(node).overflowY;
+          if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && node.scrollHeight > node.clientHeight) {
+            const r = node.getBoundingClientRect();
+            return [r.x, r.y, r.width, r.height];
+          }
+        }
+        return null;
+      });
+      if (box) list = box as Rect;
+    }
+    // can the rows' scroller still scroll up / down (read exactly here; the list, else the page)
+    let canScrollUp = true, canScrollDown = true;
+    if ((await fromRow.count()) === 1) {
+      const can = await fromRow.first().evaluate((el) => {
+        let scroller: Element | null = null;
+        for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+          const overflow = getComputedStyle(node).overflowY;
+          if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && node.scrollHeight > node.clientHeight) {
+            scroller = node;
+            break;
+          }
+        }
+        const s = (scroller ?? document.scrollingElement ?? document.documentElement) as Element;
+        return [s.scrollTop > 0, s.scrollTop + s.clientHeight < s.scrollHeight - 1];
+      });
+      [canScrollUp, canScrollDown] = can as [boolean, boolean];
+    }
     const plan = planMoveItem({ viewport: [0, 0, size.width, size.height], from: from as number, to: to as number,
-                                section: step.section, rows, handle, id });
+                                section: step.section, rows, handle, id, list, canScrollUp, canScrollDown });
     if ('fail' in plan) fail(plan.fail);
     const { press, release } = plan as { press: [number, number]; release: [number, number] };
+    // a row outside the moved range, wholly on screen: it must be where it was after the gesture (moveItem.ts verify)
+    const [lo, hi] = [Math.min(from as number, to as number), Math.max(from as number, to as number)];
+    let reference: { address: string; rect: Rect } | null = null;
+    for (const n of [lo - 1, hi + 1, lo - 2, hi + 2]) {
+      if (n < 0) continue;
+      const address = `${id}_item_${n}`;
+      const found = this.getLocator(address, step.within);
+      if ((await found.count()) !== 1) continue;
+      const b = await found.first().boundingBox();
+      if (b && b.y >= 0 && b.y + b.height <= size.height) {
+        reference = { address, rect: [b.x, b.y, b.width, b.height] };
+        break;
+      }
+    }
 
     await this.page.mouse.move(press[0], press[1]);
     await this.page.mouse.down();
@@ -597,6 +644,11 @@ export class ActionExecutor {
     await this.page.waitForTimeout(MOVE_ITEM_TIMING.holdSeconds * 1000);
     await this.page.mouse.up();
     await this.page.waitForTimeout(150);
+    if (reference) {
+      const b = await this.getLocator(reference.address, step.within).first().boundingBox();
+      const moved = b ? scrolledDuring(reference.rect, [b.x, b.y, b.width, b.height]) : null;
+      if (moved !== null) throw new Error(scrolledSentence(reference.address, moved));
+    }
   }
 
   private async executeSelectTab(step: TestStep, timeout: number): Promise<void> {

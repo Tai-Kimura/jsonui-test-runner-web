@@ -5,7 +5,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { planMoveItem, MOVE_ITEM_TIMING, MOVE_ITEM_EDGE_MARGIN, Rect } from './moveItem';
+import { planMoveItem, scrolledDuring, MOVE_ITEM_TIMING, MOVE_ITEM_EDGE_MARGIN, MOVE_ITEM_LIST_MARGIN, Rect } from './moveItem';
 
 const vectors = JSON.parse(fs.readFileSync(path.join(__dirname, '../../test-fixtures/vectors/move-item.json'), 'utf8'));
 
@@ -13,6 +13,7 @@ describe('moveItem plan (shared vectors)', () => {
   it('uses the vectors timing and edge margin', () => {
     expect(MOVE_ITEM_TIMING).toEqual(vectors.timing);
     expect(MOVE_ITEM_EDGE_MARGIN).toBe(vectors.edgeMargin);
+    expect(MOVE_ITEM_LIST_MARGIN).toBe(vectors.listMargin);
   });
 
   for (const c of vectors.cases) {
@@ -21,8 +22,19 @@ describe('moveItem plan (shared vectors)', () => {
         viewport: c.viewport as Rect, from: c.from, to: c.to, section: c.section,
         rows: c.rows as Record<string, Rect[]>, id: 'list',
         ...('handle' in c ? { handle: c.handle as Rect | null } : {}),
+        ...('list' in c ? { list: c.list as Rect } : {}),
+        ...('canScrollUp' in c ? { canScrollUp: c.canScrollUp } : {}),
+        ...('canScrollDown' in c ? { canScrollDown: c.canScrollDown } : {}),
       });
       expect(got).toEqual('fail' in c ? { fail: c.fail } : { press: c.press, release: c.release });
+    });
+  }
+});
+
+describe('moveItem verify (shared vectors)', () => {
+  for (const w of vectors.verify) {
+    it(w.name, () => {
+      expect(scrolledDuring(w.before as Rect, w.after as Rect) !== null).toBe(w.scrolled);
     });
   }
 });

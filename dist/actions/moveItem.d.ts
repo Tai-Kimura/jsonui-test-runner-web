@@ -21,6 +21,11 @@ export interface MoveItemInput {
     handle?: Rect | null;
     /** the Collection id the addresses are built from */
     id: string;
+    /** the scrolling list that holds the rows (the nearest scrollable ancestor); absent when the page scrolls */
+    list?: Rect;
+    /** whether the rows' scroller can still scroll up / down (absent: true — refuse near that edge when unsure) */
+    canScrollUp?: boolean;
+    canScrollDown?: boolean;
 }
 export type MoveItemPlan = {
     press: [number, number];
@@ -34,7 +39,15 @@ export declare const MOVE_ITEM_TIMING: {
 };
 /** a press or release nearer the viewport's top or bottom than this lets a list scroll by itself (the vectors' edgeMargin) */
 export declare const MOVE_ITEM_EDGE_MARGIN = 100;
+/** ... and nearer its list's visible top or bottom than this (the libraries' band of 48 from the list's edges, + 8) */
+export declare const MOVE_ITEM_LIST_MARGIN = 56;
 export declare function planMoveItem(input: MoveItemInput): MoveItemPlan;
 /** The sentence a failed plan gives the step. */
 export declare function moveItemFailure(fail: string, from: number, handle?: string): string;
+/**
+ * After the gesture: a row outside the moved range keeps its index and its place through a reorder, so if it moved
+ * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify).
+ */
+export declare function scrolledDuring(before: Rect, after: Rect): number | null;
+export declare function scrolledSentence(address: string, moved: number): string;
 //# sourceMappingURL=moveItem.d.ts.map

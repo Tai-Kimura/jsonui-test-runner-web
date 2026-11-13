@@ -557,11 +557,61 @@ class ActionExecutor {
         }
         const size = this.page.viewportSize()
             ?? await this.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+        // the list that scrolls the rows: the from row's nearest scrollable ancestor (none when the page scrolls)
+        let list;
+        const fromRow = this.getLocator(`${id}_item_${from}`, step.within);
+        if ((await fromRow.count()) === 1) {
+            const box = await fromRow.first().evaluate((el) => {
+                for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+                    const overflow = getComputedStyle(node).overflowY;
+                    if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && node.scrollHeight > node.clientHeight) {
+                        const r = node.getBoundingClientRect();
+                        return [r.x, r.y, r.width, r.height];
+                    }
+                }
+                return null;
+            });
+            if (box)
+                list = box;
+        }
+        // can the rows' scroller still scroll up / down (read exactly here; the list, else the page)
+        let canScrollUp = true, canScrollDown = true;
+        if ((await fromRow.count()) === 1) {
+            const can = await fromRow.first().evaluate((el) => {
+                let scroller = null;
+                for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+                    const overflow = getComputedStyle(node).overflowY;
+                    if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && node.scrollHeight > node.clientHeight) {
+                        scroller = node;
+                        break;
+                    }
+                }
+                const s = (scroller ?? document.scrollingElement ?? document.documentElement);
+                return [s.scrollTop > 0, s.scrollTop + s.clientHeight < s.scrollHeight - 1];
+            });
+            [canScrollUp, canScrollDown] = can;
+        }
         const plan = (0, moveItem_1.planMoveItem)({ viewport: [0, 0, size.width, size.height], from: from, to: to,
-            section: step.section, rows, handle, id });
+            section: step.section, rows, handle, id, list, canScrollUp, canScrollDown });
         if ('fail' in plan)
             fail(plan.fail);
         const { press, release } = plan;
+        // a row outside the moved range, wholly on screen: it must be where it was after the gesture (moveItem.ts verify)
+        const [lo, hi] = [Math.min(from, to), Math.max(from, to)];
+        let reference = null;
+        for (const n of [lo - 1, hi + 1, lo - 2, hi + 2]) {
+            if (n < 0)
+                continue;
+            const address = `${id}_item_${n}`;
+            const found = this.getLocator(address, step.within);
+            if ((await found.count()) !== 1)
+                continue;
+            const b = await found.first().boundingBox();
+            if (b && b.y >= 0 && b.y + b.height <= size.height) {
+                reference = { address, rect: [b.x, b.y, b.width, b.height] };
+                break;
+            }
+        }
         await this.page.mouse.move(press[0], press[1]);
         await this.page.mouse.down();
         await this.page.waitForTimeout(moveItem_1.MOVE_ITEM_TIMING.pressSeconds * 1000);
@@ -569,6 +619,12 @@ class ActionExecutor {
         await this.page.waitForTimeout(moveItem_1.MOVE_ITEM_TIMING.holdSeconds * 1000);
         await this.page.mouse.up();
         await this.page.waitForTimeout(150);
+        if (reference) {
+            const b = await this.getLocator(reference.address, step.within).first().boundingBox();
+            const moved = b ? (0, moveItem_1.scrolledDuring)(reference.rect, [b.x, b.y, b.width, b.height]) : null;
+            if (moved !== null)
+                throw new Error((0, moveItem_1.scrolledSentence)(reference.address, moved));
+        }
     }
     async executeSelectTab(step, timeout) {
         const id = step.id;
