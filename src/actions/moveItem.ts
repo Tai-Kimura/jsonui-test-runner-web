@@ -100,11 +100,13 @@ export function moveItemFailure(fail: string, from: number, handle?: string): st
  * After the gesture: a row outside the moved range keeps its index and its place through a reorder, so if it moved
  * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify).
  */
-export function scrolledDuring(before: Rect, after: Rect): number | null {
+export function scrolledDuring(before: Rect, after: Rect | null): number | null {
+  if (after === null) return Infinity;   // no longer found: a lazy list scrolled it away
   const moved = Math.max(...before.map((v, i) => Math.abs(v - after[i])));
   return moved > 1 ? moved : null;
 }
 
 export function scrolledSentence(address: string, moved: number): string {
-  return `moveItem: the list scrolled during the drag ('${address}' moved by ${Math.round(moved)}); the row may have landed elsewhere — scroll the rows away from the list's edges first`;
+  const how = Number.isFinite(moved) ? `moved by ${Math.round(moved)}` : 'moved off the screen';
+  return `moveItem: the list scrolled during the drag ('${address}' ${how}); the row may have landed elsewhere — scroll the rows away from the list's edges first`;
 }

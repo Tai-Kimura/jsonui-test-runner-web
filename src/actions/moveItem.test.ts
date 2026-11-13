@@ -5,7 +5,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { planMoveItem, scrolledDuring, MOVE_ITEM_TIMING, MOVE_ITEM_EDGE_MARGIN, MOVE_ITEM_LIST_MARGIN, Rect } from './moveItem';
+import { planMoveItem, scrolledDuring, scrolledSentence, MOVE_ITEM_TIMING, MOVE_ITEM_EDGE_MARGIN, MOVE_ITEM_LIST_MARGIN, Rect } from './moveItem';
 
 const vectors = JSON.parse(fs.readFileSync(path.join(__dirname, '../../test-fixtures/vectors/move-item.json'), 'utf8'));
 
@@ -34,7 +34,9 @@ describe('moveItem plan (shared vectors)', () => {
 describe('moveItem verify (shared vectors)', () => {
   for (const w of vectors.verify) {
     it(w.name, () => {
-      expect(scrolledDuring(w.before as Rect, w.after as Rect) !== null).toBe(w.scrolled);
+      const moved = scrolledDuring(w.before as Rect, w.after as Rect | null);
+      expect(moved !== null).toBe(w.scrolled);
+      if (w.offScreen) expect(scrolledSentence('list_item_1', moved as number)).toContain("('list_item_1' moved off the screen)");
     });
   }
 });

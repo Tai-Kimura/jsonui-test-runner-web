@@ -93,10 +93,13 @@ function moveItemFailure(fail, from, handle) {
  * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify).
  */
 function scrolledDuring(before, after) {
+    if (after === null)
+        return Infinity; // no longer found: a lazy list scrolled it away
     const moved = Math.max(...before.map((v, i) => Math.abs(v - after[i])));
     return moved > 1 ? moved : null;
 }
 function scrolledSentence(address, moved) {
-    return `moveItem: the list scrolled during the drag ('${address}' moved by ${Math.round(moved)}); the row may have landed elsewhere — scroll the rows away from the list's edges first`;
+    const how = Number.isFinite(moved) ? `moved by ${Math.round(moved)}` : 'moved off the screen';
+    return `moveItem: the list scrolled during the drag ('${address}' ${how}); the row may have landed elsewhere — scroll the rows away from the list's edges first`;
 }
 //# sourceMappingURL=moveItem.js.map

@@ -48,6 +48,6 @@ export declare function moveItemFailure(fail: string, from: number, handle?: str
  * After the gesture: a row outside the moved range keeps its index and its place through a reorder, so if it moved
  * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify).
  */
-export declare function scrolledDuring(before: Rect, after: Rect): number | null;
+export declare function scrolledDuring(before: Rect, after: Rect | null): number | null;
 export declare function scrolledSentence(address: string, moved: number): string;
 //# sourceMappingURL=moveItem.d.ts.map

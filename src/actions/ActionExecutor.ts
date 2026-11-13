@@ -645,8 +645,9 @@ export class ActionExecutor {
     await this.page.mouse.up();
     await this.page.waitForTimeout(150);
     if (reference) {
-      const b = await this.getLocator(reference.address, step.within).first().boundingBox();
-      const moved = b ? scrolledDuring(reference.rect, [b.x, b.y, b.width, b.height]) : null;
+      const now = this.getLocator(reference.address, step.within);
+      const b = (await now.count()) ? await now.first().boundingBox() : null;
+      const moved = scrolledDuring(reference.rect, b ? [b.x, b.y, b.width, b.height] : null);
       if (moved !== null) throw new Error(scrolledSentence(reference.address, moved));
     }
   }
