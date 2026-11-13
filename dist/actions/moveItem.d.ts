@@ -46,7 +46,8 @@ export declare function planMoveItem(input: MoveItemInput): MoveItemPlan;
 export declare function moveItemFailure(fail: string, from: number, handle?: string): string;
 /**
  * After the gesture: a row outside the moved range keeps its index and its place through a reorder, so if it moved
- * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify).
+ * the list scrolled under the pointer and the row may have landed elsewhere (the vectors' verify). Only the top (y) is
+ * compared: v1 reorders one vertical column, and a row's x or size can change while it settles without it moving.
  */
 export declare function scrolledDuring(before: Rect, after: Rect | null): number | null;
 export declare function scrolledSentence(address: string, moved: number): string;
