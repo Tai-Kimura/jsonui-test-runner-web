@@ -210,7 +210,7 @@ drawn: every match is looked at, so one drawn copy fails it.
 | `count` | Element count | `id`, `equals` |
 | `value` | A Slider's current value | `id`, `equals`, `tolerance?` |
 
-### Reordering rows: `moveItem` (1.20.0)
+### Reordering rows: `moveItem` (1.20.0; the handle's offset 1.21.0)
 
 ```json
 { "action": "moveItem", "id": "stops", "from": 0, "to": 2 }
@@ -220,8 +220,11 @@ drawn: every match is looked at, so one drawn copy fails it.
 Drags a row of a reorderable Collection (`reorderable: true`) as a user does: the
 mouse presses the row `<id>_item_<from>` — or, with `handle`, the element of that id
 inside the row (the Collection's `reorderHandle`) — for 1 s, moves slowly to the row
-`<id>_item_<to>`, holds 0.5 s and releases over it at 3/4 of its height going down,
-1/4 going up (never on a row's centre). `to` is the row's index after the move, the
+`<id>_item_<to>`, holds 0.5 s and releases where the dragged row's centre is over it
+at 3/4 of its height going down, 1/4 going up (1.21.0: the release adds the press's
+offset from the row's centre, so a row held by a handle off its centre lands where a
+row held at its centre does; never on an edge — the libraries pass a row when the
+dragged centre goes beyond its edge, as iOS 27 does). `to` is the row's index after the move, the
 `to` the view model's `onReorder` receives. Both rows must be on screen and inside the
 visible part of the list that scrolls them (their nearest scrollable ancestor), and the
 press and the release at least 100px from the viewport's top and bottom and 56px from

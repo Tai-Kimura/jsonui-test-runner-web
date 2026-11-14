@@ -4,10 +4,13 @@
  * moveItemAction, specs/vectors/move-item.json — test-fixtures/vectors).
  *
  * The press is the handle's centre when the step gives `handle`, else the from
- * row's centre; the release is in the press's column, over the to row at 3/4
- * of its height going down and 1/4 going up — never on a centre, which the
- * libraries' reorder rule (jsonui-cli shared/core/reorder_vectors.json) does
- * not count as passed and iOS 27's own reordering does.
+ * row's centre; the release is in the press's column, where the dragged row's
+ * centre lands over the to row at 3/4 of its height going down and 1/4 going
+ * up, plus the press's offset from the from row's centre (the rule reads the
+ * row's centre, not the finger: a row held by a handle off its centre is let go
+ * that much off). Never on an edge: the libraries' reorder rule (jsonui-cli
+ * shared/core/reorder_vectors.json) passes a row when the dragged centre goes
+ * beyond its edge, as iOS 27's own reordering does.
  */
 export type Rect = [number, number, number, number];
 export interface MoveItemInput {

@@ -5,10 +5,13 @@
  * moveItemAction, specs/vectors/move-item.json — test-fixtures/vectors).
  *
  * The press is the handle's centre when the step gives `handle`, else the from
- * row's centre; the release is in the press's column, over the to row at 3/4
- * of its height going down and 1/4 going up — never on a centre, which the
- * libraries' reorder rule (jsonui-cli shared/core/reorder_vectors.json) does
- * not count as passed and iOS 27's own reordering does.
+ * row's centre; the release is in the press's column, where the dragged row's
+ * centre lands over the to row at 3/4 of its height going down and 1/4 going
+ * up, plus the press's offset from the from row's centre (the rule reads the
+ * row's centre, not the finger: a row held by a handle off its centre is let go
+ * that much off). Never on an edge: the libraries' reorder rule (jsonui-cli
+ * shared/core/reorder_vectors.json) passes a row when the dragged centre goes
+ * beyond its edge, as iOS 27's own reordering does.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MOVE_ITEM_LIST_MARGIN = exports.MOVE_ITEM_EDGE_MARGIN = exports.MOVE_ITEM_TIMING = void 0;
@@ -63,7 +66,9 @@ function planMoveItem(input) {
         press = [fromRow[0] + fromRow[2] / 2, fromRow[1] + fromRow[3] / 2];
     }
     const [, ty, , th] = toRow;
-    const release = [press[0], ty + th * (to > from ? 0.75 : 0.25)];
+    // where the dragged row's centre lands, moved by where the finger holds the row (0 at its centre)
+    const grip = press[1] - (fromRow[1] + fromRow[3] / 2);
+    const release = [press[0], ty + th * (to > from ? 0.75 : 0.25) + grip];
     // the edge rule holds only on a side the scroller can still scroll towards (a list at its top keeps still)
     const up = input.canScrollUp ?? true, down = input.canScrollDown ?? true;
     const near = (y) => (up && (y - vy < exports.MOVE_ITEM_EDGE_MARGIN || (input.list !== undefined && y - top < exports.MOVE_ITEM_LIST_MARGIN)))
